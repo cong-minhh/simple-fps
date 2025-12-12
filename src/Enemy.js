@@ -1,18 +1,22 @@
-// Enemy.js - Enemy AI with FSM (PATROL → CHASE → ATTACK)
+// Enemy.js - Intelligent Enemy AI with FSM and A* Pathfinding
 import * as THREE from 'three';
 
-// Enemy states
+// Enemy states - expanded for smarter behavior
 const STATES = {
     PATROL: 'PATROL',
     CHASE: 'CHASE',
     ATTACK: 'ATTACK',
+    STRAFE: 'STRAFE',
+    RETREAT: 'RETREAT',
+    FLANK: 'FLANK',
     IDLE: 'IDLE'
 };
 
 export class Enemy {
-    constructor(scene, arena, position) {
+    constructor(scene, arena, position, pathfinder = null) {
         this.scene = scene;
         this.arena = arena;
+        this.pathfinder = pathfinder;
 
         // Stats
         this.health = 40 + Math.random() * 20; // 40-60 HP
@@ -32,6 +36,26 @@ export class Enemy {
         this.currentWaypoint = arena.getRandomWaypoint();
         this.waypointThreshold = 0.5;
 
+        // Pathfinding state (optimized - only recalculate when needed)
+        this.currentPath = [];
+        this.currentPathIndex = 0;
+        this.pathUpdateInterval = 0.5; // Seconds between path updates
+        this.lastPathUpdate = 0;
+        this.lastPlayerPos = new THREE.Vector3();
+
+        // Combat behavior
+        this.strafeDirection = Math.random() < 0.5 ? 1 : -1;
+        this.strafeTimer = 0;
+        this.strafeDuration = 1 + Math.random(); // 1-2 seconds per strafe
+        this.retreatThreshold = 0.3; // Retreat when below 30% health
+
+        // Collision settings
+        this.collisionRadius = 0.4; // Enemy hitbox radius
+        this.stuckTimer = 0;
+        this.stuckThreshold = 1.0; // Seconds before considering stuck
+        this.lastPosition = new THREE.Vector3();
+        this.stuckRecoveryDir = new THREE.Vector3();
+
         // Create mesh
         this.mesh = this.createMesh();
         this.mesh.position.copy(position);
@@ -40,6 +64,11 @@ export class Enemy {
 
         // Reference to player (set by game)
         this.player = null;
+
+        // Reusable vectors to avoid GC
+        this._tempVec = new THREE.Vector3();
+        this._moveDir = new THREE.Vector3();
+        this._pushVec = new THREE.Vector3();
     }
 
     createMesh() {
@@ -57,7 +86,7 @@ export class Enemy {
         body.castShadow = true;
         group.add(body);
 
-        // Head (cube)
+        // Head (cube) - marked for headshot detection
         const headGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
         const headMaterial = new THREE.MeshStandardMaterial({
             color: 0xffaaaa,
@@ -67,6 +96,7 @@ export class Enemy {
         const head = new THREE.Mesh(headGeometry, headMaterial);
         head.position.y = 1.4;
         head.castShadow = true;
+        head.userData.isHead = true; // Flag for headshot detection
         group.add(head);
 
         // Eyes
@@ -109,39 +139,79 @@ export class Enemy {
         this.player = player;
     }
 
+    setPathfinder(pathfinder) {
+        this.pathfinder = pathfinder;
+    }
+
     update(deltaTime) {
         if (this.isDead || !this.player) return;
 
         const playerPos = this.player.getPosition();
         const myPos = this.mesh.position;
         const distanceToPlayer = myPos.distanceTo(playerPos);
+        const healthPercent = this.health / this.maxHealth;
 
-        // State transitions
+        // Update timers
+        this.strafeTimer += deltaTime;
+        this.lastPathUpdate += deltaTime;
+
+        // State machine with tactical decisions
         switch (this.state) {
             case STATES.PATROL:
                 if (distanceToPlayer < this.detectionRange) {
                     this.state = STATES.CHASE;
+                    this.requestPath(playerPos);
                 } else {
                     this.patrol(deltaTime);
                 }
                 break;
 
             case STATES.CHASE:
-                if (distanceToPlayer < this.attackRange) {
-                    this.state = STATES.ATTACK;
+                // Check for retreat condition (low health)
+                if (healthPercent < this.retreatThreshold && Math.random() < 0.3) {
+                    this.state = STATES.RETREAT;
+                } else if (distanceToPlayer < this.attackRange) {
+                    this.state = STATES.STRAFE; // Strafe while attacking
                 } else if (distanceToPlayer > this.detectionRange * 1.5) {
                     this.state = STATES.PATROL;
                     this.currentWaypoint = this.arena.getRandomWaypoint();
+                    this.currentPath = [];
                 } else {
                     this.chase(deltaTime, playerPos);
                 }
                 break;
 
-            case STATES.ATTACK:
+            case STATES.STRAFE:
+                // Strafe and attack simultaneously
                 if (distanceToPlayer > this.attackRange * 1.5) {
                     this.state = STATES.CHASE;
+                    this.requestPath(playerPos);
+                } else if (healthPercent < this.retreatThreshold && Math.random() < 0.2) {
+                    this.state = STATES.RETREAT;
                 } else {
-                    this.attack(deltaTime);
+                    this.strafeAttack(deltaTime, playerPos);
+                }
+                break;
+
+            case STATES.RETREAT:
+                // Move away from player when low health
+                if (healthPercent > this.retreatThreshold || distanceToPlayer > this.detectionRange) {
+                    this.state = STATES.CHASE;
+                } else {
+                    this.retreat(deltaTime, playerPos);
+                }
+                break;
+
+            case STATES.ATTACK:
+                // Legacy state - redirect to strafe
+                this.state = STATES.STRAFE;
+                break;
+
+            case STATES.FLANK:
+                // Move to player's side
+                this.flank(deltaTime, playerPos);
+                if (distanceToPlayer < this.attackRange) {
+                    this.state = STATES.STRAFE;
                 }
                 break;
 
@@ -152,11 +222,10 @@ export class Enemy {
 
         // Update health bar to face camera
         if (this.healthBar) {
-            this.healthBar.parent.lookAt(playerPos.x, this.mesh.position.y + 1.8, playerPos.z);
+            this.healthBar.parent.lookAt(playerPos.x, myPos.y + 1.8, playerPos.z);
         }
 
         // Update health bar scale
-        const healthPercent = this.health / this.maxHealth;
         this.healthBar.scale.x = healthPercent;
         this.healthBar.position.x = (1 - healthPercent) * -0.29;
 
@@ -168,23 +237,145 @@ export class Enemy {
         }
     }
 
-    patrol(deltaTime) {
-        const direction = new THREE.Vector3()
-            .subVectors(this.currentWaypoint, this.mesh.position)
-            .normalize();
+    requestPath(targetPos) {
+        if (!this.pathfinder) return;
 
-        // Move towards waypoint
-        this.mesh.position.x += direction.x * this.speed * deltaTime;
-        this.mesh.position.z += direction.z * this.speed * deltaTime;
+        // Check if player moved significantly (optimization)
+        const playerMoved = this.lastPlayerPos.distanceTo(targetPos) > 1;
+
+        if (this.lastPathUpdate >= this.pathUpdateInterval || playerMoved || this.currentPath.length === 0) {
+            const path = this.pathfinder.findPath(this.mesh.position, targetPos);
+            if (path && path.length > 0) {
+                this.currentPath = path;
+                this.currentPathIndex = 0;
+            }
+            this.lastPathUpdate = 0;
+            this.lastPlayerPos.copy(targetPos);
+        }
+    }
+
+    /**
+     * Robust movement with separate axis testing and stuck recovery
+     * Returns true if any movement occurred
+     */
+    tryMove(dx, dz, deltaTime) {
+        const pos = this.mesh.position;
+        const radius = this.collisionRadius;
+        let moved = false;
+
+        // Use ground level (y=1) for collision check - enemies are at floor level
+        const checkY = 1;
+
+        // First try moving both axes together
+        this._tempVec.set(pos.x + dx, checkY, pos.z + dz);
+        if (!this.arena.checkCollision(this._tempVec, radius)) {
+            pos.x += dx;
+            pos.z += dz;
+            moved = true;
+        } else {
+            // Try X movement separately
+            this._tempVec.set(pos.x + dx, checkY, pos.z);
+            if (!this.arena.checkCollision(this._tempVec, radius)) {
+                pos.x += dx;
+                moved = true;
+            }
+
+            // Try Z movement separately
+            this._tempVec.set(pos.x, checkY, pos.z + dz);
+            if (!this.arena.checkCollision(this._tempVec, radius)) {
+                pos.z += dz;
+                moved = true;
+            }
+        }
+
+        // Stuck detection - if not moving much, try to recover
+        const distMoved = pos.distanceTo(this.lastPosition);
+        if (distMoved < 0.01) {
+            this.stuckTimer += deltaTime;
+
+            if (this.stuckTimer > this.stuckThreshold) {
+                // Push away from collisions
+                this.pushOutOfCollision();
+                this.stuckTimer = 0;
+
+                // Request new path if we have pathfinder
+                if (this.pathfinder && this.player) {
+                    this.currentPath = [];
+                    this.lastPathUpdate = this.pathUpdateInterval; // Force recalc
+                }
+            }
+        } else {
+            this.stuckTimer = 0;
+        }
+
+        this.lastPosition.copy(pos);
+        return moved;
+    }
+
+    /**
+     * Push enemy out of any collisions they're inside
+     */
+    pushOutOfCollision() {
+        const pos = this.mesh.position;
+        const radius = this.collisionRadius;
+        const checkY = 1; // Same Y level as tryMove
+
+        // Check current position
+        this._tempVec.set(pos.x, checkY, pos.z);
+        const collider = this.arena.checkCollision(this._tempVec, radius);
+
+        if (collider) {
+            // Calculate push direction (away from collider center)
+            const colliderCenterX = (collider.min.x + collider.max.x) / 2;
+            const colliderCenterZ = (collider.min.z + collider.max.z) / 2;
+
+            this._pushVec.set(pos.x - colliderCenterX, 0, pos.z - colliderCenterZ);
+            const len = this._pushVec.length();
+
+            if (len > 0.01) {
+                this._pushVec.divideScalar(len); // Normalize
+
+                // Push out incrementally
+                for (let i = 0; i < 10; i++) {
+                    pos.x += this._pushVec.x * 0.15;
+                    pos.z += this._pushVec.z * 0.15;
+
+                    this._tempVec.set(pos.x, checkY, pos.z);
+                    if (!this.arena.checkCollision(this._tempVec, radius)) {
+                        break; // We're out!
+                    }
+                }
+            } else {
+                // Random push if at center
+                pos.x += (Math.random() - 0.5) * 0.8;
+                pos.z += (Math.random() - 0.5) * 0.8;
+            }
+        }
+    }
+
+    patrol(deltaTime) {
+        const direction = this._moveDir;
+        direction.subVectors(this.currentWaypoint, this.mesh.position);
+        direction.y = 0;
+
+        if (direction.lengthSq() < 0.01) {
+            this.currentWaypoint = this.arena.getRandomWaypoint();
+            return;
+        }
+
+        direction.normalize();
+
+        // Move towards waypoint with collision checking
+        const dx = direction.x * this.speed * deltaTime;
+        const dz = direction.z * this.speed * deltaTime;
+        this.tryMove(dx, dz, deltaTime);
 
         // Look in movement direction
-        if (direction.length() > 0.1) {
-            this.mesh.lookAt(
-                this.mesh.position.x + direction.x,
-                this.mesh.position.y,
-                this.mesh.position.z + direction.z
-            );
-        }
+        this.mesh.lookAt(
+            this.mesh.position.x + direction.x,
+            this.mesh.position.y,
+            this.mesh.position.z + direction.z
+        );
 
         // Check if reached waypoint
         const distToWaypoint = this.mesh.position.distanceTo(this.currentWaypoint);
@@ -194,23 +385,126 @@ export class Enemy {
     }
 
     chase(deltaTime, playerPos) {
-        const direction = new THREE.Vector3()
-            .subVectors(playerPos, this.mesh.position);
+        // Request path update if needed
+        this.requestPath(playerPos);
+
+        // Follow path if available
+        if (this.currentPath.length > 0 && this.currentPathIndex < this.currentPath.length) {
+            const target = this.currentPath[this.currentPathIndex];
+            const direction = this._moveDir;
+            direction.subVectors(target, this.mesh.position);
+            direction.y = 0;
+
+            const distToWaypoint = direction.length();
+
+            if (distToWaypoint < 0.5) {
+                this.currentPathIndex++;
+            } else {
+                direction.normalize();
+
+                // Move with robust collision checking
+                const dx = direction.x * this.speed * deltaTime;
+                const dz = direction.z * this.speed * deltaTime;
+                this.tryMove(dx, dz, deltaTime);
+
+                // Look at movement direction
+                this.mesh.lookAt(
+                    this.mesh.position.x + direction.x,
+                    this.mesh.position.y,
+                    this.mesh.position.z + direction.z
+                );
+            }
+        } else {
+            // Fallback: direct movement if no path
+            this.directChase(deltaTime, playerPos);
+        }
+    }
+
+    directChase(deltaTime, playerPos) {
+        const direction = this._moveDir;
+        direction.subVectors(playerPos, this.mesh.position);
         direction.y = 0;
         direction.normalize();
 
-        // Move towards player
-        const newX = this.mesh.position.x + direction.x * this.speed * deltaTime;
-        const newZ = this.mesh.position.z + direction.z * this.speed * deltaTime;
+        const dx = direction.x * this.speed * deltaTime;
+        const dz = direction.z * this.speed * deltaTime;
+        this.tryMove(dx, dz, deltaTime);
 
-        // Simple collision avoidance with arena boundaries
-        const testPos = new THREE.Vector3(newX, this.mesh.position.y + 1, newZ);
-        if (!this.arena.checkCollision(testPos, 0.3)) {
-            this.mesh.position.x = newX;
-            this.mesh.position.z = newZ;
+        this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+    }
+
+    strafeAttack(deltaTime, playerPos) {
+        // Change strafe direction periodically
+        if (this.strafeTimer > this.strafeDuration) {
+            this.strafeDirection *= -1;
+            this.strafeTimer = 0;
+            this.strafeDuration = 1 + Math.random();
         }
 
-        // Look at player
+        // Calculate strafe direction (perpendicular to player)
+        const toPlayer = this._moveDir;
+        toPlayer.subVectors(playerPos, this.mesh.position);
+        toPlayer.y = 0;
+        toPlayer.normalize();
+
+        // Perpendicular vector for strafing
+        const strafeX = toPlayer.z * this.strafeDirection;
+        const strafeZ = -toPlayer.x * this.strafeDirection;
+
+        // Move sideways with robust collision
+        const strafeSpeed = this.speed * 0.6;
+        const dx = strafeX * strafeSpeed * deltaTime;
+        const dz = strafeZ * strafeSpeed * deltaTime;
+
+        if (!this.tryMove(dx, dz, deltaTime)) {
+            // Couldn't move, reverse strafe direction
+            this.strafeDirection *= -1;
+        }
+
+        // Always face player
+        this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+
+        // Attack while strafing
+        this.attack(deltaTime);
+    }
+
+    retreat(deltaTime, playerPos) {
+        // Move away from player
+        const away = this._moveDir;
+        away.subVectors(this.mesh.position, playerPos);
+        away.y = 0;
+        away.normalize();
+
+        const retreatSpeed = this.speed * 0.8;
+        const dx = away.x * retreatSpeed * deltaTime;
+        const dz = away.z * retreatSpeed * deltaTime;
+
+        if (!this.tryMove(dx, dz, deltaTime)) {
+            // Can't retreat further, switch to strafe
+            this.state = STATES.STRAFE;
+        }
+
+        // Keep facing player while retreating
+        this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+    }
+
+    flank(deltaTime, playerPos) {
+        // Try to move to player's side
+        const toPlayer = this._moveDir;
+        toPlayer.subVectors(playerPos, this.mesh.position);
+        toPlayer.y = 0;
+
+        // Get perpendicular direction
+        const flankX = toPlayer.z * this.strafeDirection;
+        const flankZ = -toPlayer.x * this.strafeDirection;
+
+        // Also move closer
+        toPlayer.normalize();
+        const dx = (toPlayer.x * 0.5 + flankX * 0.5) * this.speed * deltaTime;
+        const dz = (toPlayer.z * 0.5 + flankZ * 0.5) * this.speed * deltaTime;
+
+        this.tryMove(dx, dz, deltaTime);
+
         this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
     }
 
@@ -228,10 +522,6 @@ export class Enemy {
                 this.animateAttack();
             }
         }
-
-        // Keep looking at player
-        const playerPos = this.player.getPosition();
-        this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
     }
 
     animateAttack() {

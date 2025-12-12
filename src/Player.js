@@ -13,8 +13,11 @@ export class Player {
         // Movement settings
         this.walkSpeed = 4;
         this.sprintSpeed = 6;
+        this.crouchSpeed = 2;
         this.jumpForce = 8;
         this.gravity = 20;
+        this.standHeight = 1.6;
+        this.crouchHeight = 1.0;
         this.playerHeight = 1.6;
         this.playerRadius = 0.4;
 
@@ -27,6 +30,7 @@ export class Player {
         this.isDead = false;
         this._isLocked = false;
         this.isOnGround = true;
+        this.isCrouching = false;
         this.velocityY = 0;
 
         // Input flags - using direct booleans for speed
@@ -36,6 +40,7 @@ export class Player {
         this.moveR = false;
         this.sprint = false;
         this.jump = false;
+        this.crouch = false;
 
         // Reusable vectors to avoid GC
         this._testPos = new THREE.Vector3();
@@ -83,7 +88,8 @@ export class Player {
             case 'KeyA': case 'ArrowLeft': this.moveL = true; break;
             case 'KeyD': case 'ArrowRight': this.moveR = true; break;
             case 'ShiftLeft': case 'ShiftRight': this.sprint = true; break;
-            case 'Space': if (this.isOnGround) this.jump = true; break;
+            case 'Space': if (this.isOnGround && !this.isCrouching) this.jump = true; break;
+            case 'KeyC': this.crouch = true; break;
         }
     }
 
@@ -94,6 +100,7 @@ export class Player {
             case 'KeyA': case 'ArrowLeft': this.moveL = false; break;
             case 'KeyD': case 'ArrowRight': this.moveR = false; break;
             case 'ShiftLeft': case 'ShiftRight': this.sprint = false; break;
+            case 'KeyC': this.crouch = false; break;
         }
     }
 
@@ -113,7 +120,19 @@ export class Player {
         // Cap delta to prevent explosion
         if (dt > 0.1) dt = 0.1;
 
-        const speed = this.sprint ? this.sprintSpeed : this.walkSpeed;
+        // Handle crouch state (hold to crouch)
+        this.isCrouching = this.crouch;
+
+        // Smooth height transition (8 units/sec for snappy feel)
+        const targetHeight = this.isCrouching ? this.crouchHeight : this.standHeight;
+        if (this.playerHeight !== targetHeight) {
+            const heightDiff = targetHeight - this.playerHeight;
+            const maxChange = 8 * dt;
+            this.playerHeight += Math.abs(heightDiff) < maxChange ? heightDiff : Math.sign(heightDiff) * maxChange;
+        }
+
+        // Speed: crouch < walk < sprint (can't sprint while crouching)
+        const speed = this.isCrouching ? this.crouchSpeed : (this.sprint ? this.sprintSpeed : this.walkSpeed);
         const yaw = this.camera.rotation.y;
 
         // Calculate sin/cos once
@@ -197,12 +216,14 @@ export class Player {
     reset() {
         this.health = this.maxHealth;
         this.isDead = false;
+        this.playerHeight = this.standHeight;
+        this.isCrouching = false;
         this.camera.position.set(0, this.playerHeight, 5);
         this.camera.rotation.set(0, 0, 0);
         this.velocityY = 0;
         this.isOnGround = true;
         this.moveF = this.moveB = this.moveL = this.moveR = false;
-        this.sprint = this.jump = false;
+        this.sprint = this.jump = this.crouch = false;
     }
 
     getPosition() {

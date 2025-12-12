@@ -1,5 +1,6 @@
 // WaveManager.js - Enemy wave spawning system
 import { Enemy } from './Enemy.js';
+import { Pathfinding } from './Pathfinding.js';
 
 export class WaveManager {
     constructor(scene, arena) {
@@ -19,10 +20,16 @@ export class WaveManager {
         // Reference
         this.player = null;
         this.shooting = null;
+        this.pathfinder = null;
 
         // Callbacks
         this.onEnemyKilled = null;
         this.onWaveChange = null;
+    }
+
+    initPathfinding() {
+        // Initialize A* pathfinding grid from arena
+        this.pathfinder = new Pathfinding(this.arena, 0.5);
     }
 
     setPlayer(player) {
@@ -64,7 +71,7 @@ export class WaveManager {
         if (this.getAliveCount() >= this.maxEnemies) return;
 
         const spawnPos = this.arena.getRandomSpawnPoint();
-        const enemy = new Enemy(this.scene, this.arena, spawnPos);
+        const enemy = new Enemy(this.scene, this.arena, spawnPos, this.pathfinder);
 
         if (this.player) {
             enemy.setPlayer(this.player);

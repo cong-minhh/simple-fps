@@ -9,6 +9,7 @@ export class Shooting {
         // Shooting settings
         this.fireRate = 6; // shots per second
         this.damage = 20;
+        this.headDamage = 60; // 3x headshot multiplier
         this.lastShotTime = 0;
         this.minTimeBetweenShots = 1000 / this.fireRate;
 
@@ -104,6 +105,10 @@ export class Shooting {
         if (intersects.length > 0) {
             const hit = intersects[0];
 
+            // Check if we hit the head (for headshot damage)
+            const isHeadshot = hit.object.userData.isHead === true;
+            const damage = isHeadshot ? this.headDamage : this.damage;
+
             // Find the enemy this mesh belongs to
             let hitObject = hit.object;
             while (hitObject.parent && !hitObject.userData.enemy) {
@@ -111,13 +116,13 @@ export class Shooting {
             }
 
             if (hitObject.userData.enemy) {
-                // Notify hit callback
+                // Notify hit callback with damage and headshot info
                 if (this.onHit) {
-                    this.onHit(hitObject.userData.enemy, this.damage, hit.point);
+                    this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
                 }
 
-                // Create hit effect
-                this.createHitEffect(hit.point);
+                // Create hit effect (different color for headshots)
+                this.createHitEffect(hit.point, isHeadshot);
             }
         }
 
@@ -162,15 +167,17 @@ export class Shooting {
         }
     }
 
-    createHitEffect(position) {
+    createHitEffect(position, isHeadshot = false) {
         // Create small particle burst at hit location
-        const particleCount = 5;
+        // Headshots: yellow, more particles | Body: orange, fewer particles
+        const particleCount = isHeadshot ? 8 : 5;
         const particles = new THREE.Group();
+        const color = isHeadshot ? 0xffff00 : 0xff6600;
 
         for (let i = 0; i < particleCount; i++) {
             const geometry = new THREE.SphereGeometry(0.03, 4, 4);
             const material = new THREE.MeshBasicMaterial({
-                color: 0xff6600,
+                color: color,
                 transparent: true,
                 opacity: 1
             });

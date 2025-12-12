@@ -40,6 +40,7 @@ class Game {
         // Connect systems
         this.waveManager.setPlayer(this.player);
         this.waveManager.setShooting(this.shooting);
+        this.waveManager.initPathfinding(); // Initialize A* pathfinding
 
         // Set up callbacks
         this.setupCallbacks();
@@ -141,7 +142,7 @@ class Game {
             this.audio.playGunshot();
         };
 
-        this.shooting.onHit = (enemy, damage) => {
+        this.shooting.onHit = (enemy, damage, hitPoint, isHeadshot) => {
             const killed = enemy.takeDamage(damage);
             this.audio.playHit();
             if (killed) {
