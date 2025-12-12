@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vercel FPS: Low-Poly Arena</title>
+  <meta name="description" content="A minimalistic low-poly FPS game - survive waves of enemies in a fast-paced arena!">
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+  <!-- Game Canvas Container -->
+  <div id="game-container"></div>
+  
+  <!-- HUD Overlay -->
+  <div id="hud" class="hidden">
+    <div id="crosshair">+</div>
+    <div id="health-container">
+      <div id="health-bar"></div>
+      <span id="health-text">100</span>
+    </div>
+    <div id="stats">
+      <div id="wave">Wave: 1</div>
+      <div id="enemies">Enemies: 0</div>
+      <div id="timer">Time: 0s</div>
+      <div id="score">Score: 0</div>
+    </div>
+  </div>
+
+  <!-- Start Menu -->
+  <div id="start-menu" class="menu">
+    <h1>VERCEL FPS</h1>
+    <h2>Low-Poly Arena</h2>
+    <p class="instructions">
+      WASD - Move<br>
+      SHIFT - Sprint<br>
+      SPACE - Jump<br>
+      MOUSE - Aim<br>
+      CLICK - Shoot
+    </p>
+    <button id="start-btn">CLICK TO PLAY</button>
+    <p id="high-score">High Score: 0</p>
+  </div>
+
+  <!-- Game Over Menu -->
+  <div id="game-over-menu" class="menu hidden">
+    <h1>GAME OVER</h1>
+    <p id="final-score">Score: 0</p>
+    <p id="final-time">Survived: 0s</p>
+    <p id="new-high-score" class="hidden">NEW HIGH SCORE!</p>
+    <button id="restart-btn">PLAY AGAIN</button>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loading" class="menu">
+    <h2>Loading...</h2>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
