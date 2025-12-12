@@ -1,4 +1,4 @@
-// main.js - Game orchestrator
+// main.js - Optimized game orchestrator
 import * as THREE from 'three';
 import { Arena } from './Arena.js';
 import { Player } from './Player.js';
@@ -11,10 +11,10 @@ import { Audio } from './Audio.js';
 
 // Game states
 const STATES = {
-    LOADING: 'LOADING',
-    MENU: 'MENU',
-    PLAYING: 'PLAYING',
-    GAME_OVER: 'GAME_OVER'
+    LOADING: 0,
+    MENU: 1,
+    PLAYING: 2,
+    GAME_OVER: 3
 };
 
 class Game {
@@ -50,16 +50,22 @@ class Game {
         // Handle window resize
         window.addEventListener('resize', () => this.onResize());
 
-        // Start loading
+        // Bind animate for optimal performance
+        this.animate = this.animate.bind(this);
+
+        // Start
         this.finishLoading();
     }
 
     initRenderer() {
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: false,  // Disable for performance
+            powerPreference: 'high-performance'
+        });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(1);  // Lock to 1 for best performance
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.type = THREE.BasicShadowMap;  // Faster shadows
         this.renderer.setClearColor(0x1a1a2e);
 
         document.getElementById('game-container').appendChild(this.renderer.domElement);
@@ -67,50 +73,45 @@ class Game {
 
     initScene() {
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.Fog(0x1a1a2e, 15, 40);
+        this.scene.fog = new THREE.Fog(0x1a1a2e, 20, 50);
 
         this.camera = new THREE.PerspectiveCamera(
-            75,
+            90,  // Wider FOV like CS:GO
             window.innerWidth / window.innerHeight,
             0.1,
             100
         );
 
-        // Add camera to scene so gun model is visible
         this.scene.add(this.camera);
     }
 
     initLighting() {
-        // Ambient light
-        const ambient = new THREE.AmbientLight(0x404060, 0.4);
+        // Simple ambient - no shadows
+        const ambient = new THREE.AmbientLight(0x606080, 0.6);
         this.scene.add(ambient);
 
-        // Main directional light
+        // Main light with shadows
         const directional = new THREE.DirectionalLight(0xffffff, 0.8);
         directional.position.set(10, 20, 10);
         directional.castShadow = true;
-        directional.shadow.mapSize.width = 1024;
-        directional.shadow.mapSize.height = 1024;
-        directional.shadow.camera.near = 0.5;
-        directional.shadow.camera.far = 50;
-        directional.shadow.camera.left = -15;
-        directional.shadow.camera.right = 15;
-        directional.shadow.camera.top = 15;
-        directional.shadow.camera.bottom = -15;
+        directional.shadow.mapSize.width = 512;
+        directional.shadow.mapSize.height = 512;
+        directional.shadow.camera.near = 1;
+        directional.shadow.camera.far = 40;
+        directional.shadow.camera.left = -12;
+        directional.shadow.camera.right = 12;
+        directional.shadow.camera.top = 12;
+        directional.shadow.camera.bottom = -12;
         this.scene.add(directional);
 
-        // Colored accent lights
-        const redLight = new THREE.PointLight(0xff4444, 0.5, 20);
+        // Colored lights - no shadows
+        const redLight = new THREE.PointLight(0xff4444, 0.4, 25);
         redLight.position.set(-8, 5, -8);
         this.scene.add(redLight);
 
-        const blueLight = new THREE.PointLight(0x4444ff, 0.5, 20);
+        const blueLight = new THREE.PointLight(0x4444ff, 0.4, 25);
         blueLight.position.set(8, 5, 8);
         this.scene.add(blueLight);
-
-        const greenLight = new THREE.PointLight(0x00ff88, 0.3, 15);
-        greenLight.position.set(0, 3, 0);
-        this.scene.add(greenLight);
     }
 
     createDamageFlash() {
@@ -124,11 +125,9 @@ class Game {
     }
 
     setupCallbacks() {
-        // Menu callbacks
         this.menu.onStart = () => this.startGame();
-        this.menu.onRestart = () => this.restartGame();
+        this.menu.onRestart = () => this.startGame();
 
-        // Wave manager callbacks
         this.waveManager.onEnemyKilled = () => {
             this.score.addKill();
             this.audio.playEnemyDeath();
@@ -138,12 +137,11 @@ class Game {
             this.hud.updateWave(wave);
         };
 
-        // Shooting callbacks
         this.shooting.onShoot = () => {
             this.audio.playGunshot();
         };
 
-        this.shooting.onHit = (enemy, damage, hitPoint) => {
+        this.shooting.onHit = (enemy, damage) => {
             const killed = enemy.takeDamage(damage);
             this.audio.playHit();
             if (killed) {
@@ -151,65 +149,44 @@ class Game {
             }
         };
 
-        // Track player damage for audio
-        const originalTakeDamage = this.player.takeDamage.bind(this.player);
+        // Player damage audio
+        const origTakeDamage = this.player.takeDamage.bind(this.player);
         this.player.takeDamage = (amount) => {
-            originalTakeDamage(amount);
+            origTakeDamage(amount);
             this.audio.playPlayerHurt();
         };
 
-        // Pointer lock handling
+        // Pointer lock
         this.player.controls.addEventListener('lock', () => {
             if (this.state === STATES.MENU) {
                 this.startGame();
             }
         });
-
-        this.player.controls.addEventListener('unlock', () => {
-            if (this.state === STATES.PLAYING && !this.player.isDead) {
-                // Paused - could show pause menu
-            }
-        });
     }
 
     finishLoading() {
-        // Hide loading, show menu
         this.menu.hideLoading();
         this.menu.showStart(this.score.getHighScore());
         this.state = STATES.MENU;
-
-        // Start animation loop
-        this.animate(0);
+        requestAnimationFrame(this.animate);
     }
 
     startGame() {
         if (this.state === STATES.PLAYING) return;
 
         this.state = STATES.PLAYING;
-
-        // Initialize audio on first interaction
         this.audio.init();
 
-        // Reset systems
         this.player.reset();
         this.waveManager.reset();
         this.score.reset();
         this.hud.reset();
         this.shooting.reset();
 
-        // Update UI
         this.menu.hideAll();
         this.hud.show();
-
-        // Lock pointer
         this.player.lock();
-
-        // Start spawning
         this.waveManager.start();
-    }
-
-    restartGame() {
-        this.startGame();
     }
 
     gameOver() {
@@ -219,46 +196,47 @@ class Game {
         const finalTime = this.hud.getElapsedSeconds();
         const isNewHigh = this.score.isNewHighScore();
 
-        if (isNewHigh) {
-            this.score.saveHighScore();
-        }
+        if (isNewHigh) this.score.saveHighScore();
 
         this.hud.hide();
         this.menu.showGameOver(finalScore, finalTime, isNewHigh);
     }
 
-    update(deltaTime) {
-        if (this.state !== STATES.PLAYING) return;
+    animate(time) {
+        requestAnimationFrame(this.animate);
 
-        // Update player
-        this.player.update(deltaTime);
+        // Calculate delta time
+        const dt = (time - this.lastTime) * 0.001;
+        this.lastTime = time;
 
-        // Check for death
-        if (this.player.isDead) {
-            this.gameOver();
+        // Skip if tab not visible or first frame
+        if (dt <= 0 || dt > 0.2) {
+            this.renderer.render(this.scene, this.camera);
             return;
         }
 
-        // Update enemies
-        this.waveManager.update(deltaTime);
+        // Update game state
+        if (this.state === STATES.PLAYING) {
+            this.player.update(dt);
 
-        // Update HUD
-        this.hud.updateHealth(this.player.health, this.player.maxHealth);
-        this.hud.updateEnemies(this.waveManager.getAliveCount());
-        this.hud.updateWave(this.waveManager.getWave());
+            if (this.player.isDead) {
+                this.gameOver();
+            } else {
+                this.waveManager.update(dt);
 
-        const elapsed = this.hud.updateTimer();
-        this.score.updateSurvival(elapsed);
-        this.hud.updateScore(this.score.getScore());
-    }
+                // Update HUD less frequently (every ~100ms)
+                if (Math.floor(time / 100) !== Math.floor((time - dt * 1000) / 100)) {
+                    this.hud.updateHealth(this.player.health, this.player.maxHealth);
+                    this.hud.updateEnemies(this.waveManager.getAliveCount());
+                    this.hud.updateWave(this.waveManager.getWave());
+                    const elapsed = this.hud.updateTimer();
+                    this.score.updateSurvival(elapsed);
+                    this.hud.updateScore(this.score.getScore());
+                }
+            }
+        }
 
-    animate(currentTime) {
-        requestAnimationFrame((t) => this.animate(t));
-
-        const deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1);
-        this.lastTime = currentTime;
-
-        this.update(deltaTime);
+        // Render
         this.renderer.render(this.scene, this.camera);
     }
 

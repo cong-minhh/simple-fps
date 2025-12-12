@@ -1,4 +1,4 @@
-// Player.js - Optimized CS:GO-style FPS camera and movement
+// Player.js - Ultra-optimized FPS camera and movement
 import * as THREE from 'three';
 
 export class Player {
@@ -7,224 +7,168 @@ export class Player {
         this.domElement = domElement;
         this.arena = arena;
 
+        // Pre-set rotation order ONCE - critical for FPS camera
+        this.camera.rotation.order = 'YXZ';
+
         // Movement settings
         this.walkSpeed = 4;
         this.sprintSpeed = 6;
         this.jumpForce = 8;
         this.gravity = 20;
+        this.playerHeight = 1.6;
+        this.playerRadius = 0.4;
 
-        // Camera settings
-        this.sensitivity = 0.0015;
-        this.maxDelta = 150;
-        this.pitch = 0;
-        this.yaw = 0;
-        this.targetPitch = 0;
-        this.targetYaw = 0;
-        this.pitchMin = -1.553;
-        this.pitchMax = 1.553;
-
-        // Cached objects (avoid GC stutters)
-        this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
-        this._moveDir = new THREE.Vector3();
-        this._testPos = new THREE.Vector3();
+        // Mouse sensitivity (radians per pixel)
+        this.sensitivity = 0.002;
 
         // State
-        this.velocity = new THREE.Vector3();
-        this.isOnGround = true;
         this.health = 100;
         this.maxHealth = 100;
         this.isDead = false;
         this._isLocked = false;
-        this._skipNextMouse = false;
-        this._hasMouseInput = false;
+        this.isOnGround = true;
+        this.velocityY = 0;
 
-        // Input state - using object for cleaner access
-        this.input = {
-            forward: false,
-            backward: false,
-            left: false,
-            right: false,
-            sprint: false,
-            jump: false
-        };
+        // Input flags - using direct booleans for speed
+        this.moveF = false;
+        this.moveB = false;
+        this.moveL = false;
+        this.moveR = false;
+        this.sprint = false;
+        this.jump = false;
 
-        // Physics
-        this.playerHeight = 1.6;
-        this.playerRadius = 0.4;
+        // Reusable vectors to avoid GC
+        this._testPos = new THREE.Vector3();
 
-        // Initialize camera position and rotation
+        // Initial setup
         this.camera.position.set(0, this.playerHeight, 5);
-        this._syncRotation();
+        this.camera.rotation.set(0, 0, 0);
 
-        // Setup event listeners
-        this._setupEvents();
-    }
+        // Bind and register events
+        this._onMouse = this._onMouse.bind(this);
+        this._onKeyDown = this._onKeyDown.bind(this);
+        this._onKeyUp = this._onKeyUp.bind(this);
+        this._onLockChange = this._onLockChange.bind(this);
 
-    _setupEvents() {
-        // Use bound functions stored as properties for proper removal if needed
-        this._onMouseMove = (e) => {
-            if (!this._isLocked || this.isDead) return;
-            if (this._skipNextMouse) {
-                this._skipNextMouse = false;
-                return;
-            }
-
-            let dx = e.movementX || 0;
-            let dy = e.movementY || 0;
-
-            // Filter extreme values (prevents teleporting)
-            if (Math.abs(dx) > this.maxDelta) dx = 0;
-            if (Math.abs(dy) > this.maxDelta) dy = 0;
-
-            // Accumulate target rotation
-            this.targetYaw -= dx * this.sensitivity;
-            this.targetPitch -= dy * this.sensitivity;
-
-            // Clamp pitch
-            this.targetPitch = Math.max(this.pitchMin, Math.min(this.pitchMax, this.targetPitch));
-
-            // Wrap yaw
-            if (this.targetYaw > Math.PI) this.targetYaw -= Math.PI * 2;
-            if (this.targetYaw < -Math.PI) this.targetYaw += Math.PI * 2;
-
-            this._hasMouseInput = true;
-        };
-
-        this._onKeyDown = (e) => {
-            if (this.isDead) return;
-            this._setKey(e.code, true);
-        };
-
-        this._onKeyUp = (e) => {
-            this._setKey(e.code, false);
-        };
-
-        this._onLockChange = () => {
-            const wasLocked = this._isLocked;
-            this._isLocked = document.pointerLockElement === this.domElement;
-
-            if (this._isLocked && !wasLocked) {
-                this._skipNextMouse = true;
-                this.domElement.dispatchEvent(new CustomEvent('lock'));
-            } else if (!this._isLocked && wasLocked) {
-                this.domElement.dispatchEvent(new CustomEvent('unlock'));
-            }
-        };
-
-        document.addEventListener('mousemove', this._onMouseMove, false);
+        document.addEventListener('mousemove', this._onMouse, false);
         document.addEventListener('keydown', this._onKeyDown, false);
         document.addEventListener('keyup', this._onKeyUp, false);
         document.addEventListener('pointerlockchange', this._onLockChange, false);
     }
 
-    _setKey(code, pressed) {
-        switch (code) {
-            case 'KeyW': case 'ArrowUp': this.input.forward = pressed; break;
-            case 'KeyS': case 'ArrowDown': this.input.backward = pressed; break;
-            case 'KeyA': case 'ArrowLeft': this.input.left = pressed; break;
-            case 'KeyD': case 'ArrowRight': this.input.right = pressed; break;
-            case 'ShiftLeft': case 'ShiftRight': this.input.sprint = pressed; break;
-            case 'Space': this.input.jump = pressed; break;
+    // CRITICAL: Mouse handling must be instant with zero lag
+    _onMouse(e) {
+        if (!this._isLocked || this.isDead) return;
+
+        const dx = e.movementX;
+        const dy = e.movementY;
+
+        // Skip abnormal values (happens on pointer lock)
+        if (dx > 200 || dx < -200 || dy > 200 || dy < -200) return;
+
+        // Direct rotation update - no intermediate objects
+        this.camera.rotation.y -= dx * this.sensitivity;
+        this.camera.rotation.x -= dy * this.sensitivity;
+
+        // Clamp pitch inline
+        if (this.camera.rotation.x > 1.5) this.camera.rotation.x = 1.5;
+        if (this.camera.rotation.x < -1.5) this.camera.rotation.x = -1.5;
+    }
+
+    _onKeyDown(e) {
+        if (this.isDead) return;
+        switch (e.code) {
+            case 'KeyW': case 'ArrowUp': this.moveF = true; break;
+            case 'KeyS': case 'ArrowDown': this.moveB = true; break;
+            case 'KeyA': case 'ArrowLeft': this.moveL = true; break;
+            case 'KeyD': case 'ArrowRight': this.moveR = true; break;
+            case 'ShiftLeft': case 'ShiftRight': this.sprint = true; break;
+            case 'Space': if (this.isOnGround) this.jump = true; break;
         }
     }
 
-    _syncRotation() {
-        // Apply rotation using cached euler - no new object creation
-        this._euler.set(this.pitch, this.yaw, 0, 'YXZ');
-        this.camera.quaternion.setFromEuler(this._euler);
+    _onKeyUp(e) {
+        switch (e.code) {
+            case 'KeyW': case 'ArrowUp': this.moveF = false; break;
+            case 'KeyS': case 'ArrowDown': this.moveB = false; break;
+            case 'KeyA': case 'ArrowLeft': this.moveL = false; break;
+            case 'KeyD': case 'ArrowRight': this.moveR = false; break;
+            case 'ShiftLeft': case 'ShiftRight': this.sprint = false; break;
+        }
     }
 
-    update(deltaTime) {
+    _onLockChange() {
+        const wasLocked = this._isLocked;
+        this._isLocked = document.pointerLockElement === this.domElement;
+        if (this._isLocked && !wasLocked) {
+            this.domElement.dispatchEvent(new CustomEvent('lock'));
+        } else if (!this._isLocked && wasLocked) {
+            this.domElement.dispatchEvent(new CustomEvent('unlock'));
+        }
+    }
+
+    update(dt) {
         if (this.isDead || !this._isLocked) return;
 
-        // Clamp delta time
-        deltaTime = Math.min(deltaTime, 0.05);
+        // Cap delta to prevent explosion
+        if (dt > 0.1) dt = 0.1;
 
-        // Apply accumulated mouse input (sync rotation in update loop)
-        if (this._hasMouseInput) {
-            this.pitch = this.targetPitch;
-            this.yaw = this.targetYaw;
-            this._syncRotation();
-            this._hasMouseInput = false;
+        const speed = this.sprint ? this.sprintSpeed : this.walkSpeed;
+        const yaw = this.camera.rotation.y;
+
+        // Calculate sin/cos once
+        const s = Math.sin(yaw);
+        const c = Math.cos(yaw);
+
+        // Forward: -sin, -cos | Right: cos, -sin
+        let vx = 0, vz = 0;
+
+        if (this.moveF) { vx -= s; vz -= c; }
+        if (this.moveB) { vx += s; vz += c; }
+        if (this.moveR) { vx += c; vz -= s; }
+        if (this.moveL) { vx -= c; vz += s; }
+
+        // Normalize if moving diagonally
+        const len = Math.sqrt(vx * vx + vz * vz);
+        if (len > 0) {
+            const inv = speed / len;
+            vx *= inv;
+            vz *= inv;
         }
-
-        // Movement
-        this._updateMovement(deltaTime);
-        this._updatePhysics(deltaTime);
-    }
-
-    _updateMovement(dt) {
-        const speed = this.input.sprint ? this.sprintSpeed : this.walkSpeed;
-        const sin = Math.sin(this.yaw);
-        const cos = Math.cos(this.yaw);
-
-        // Reset velocity
-        this.velocity.x = 0;
-        this.velocity.z = 0;
-
-        // Forward/backward (forward is -Z in Three.js default)
-        if (this.input.forward) {
-            this.velocity.x -= sin * speed;
-            this.velocity.z -= cos * speed;
-        }
-        if (this.input.backward) {
-            this.velocity.x += sin * speed;
-            this.velocity.z += cos * speed;
-        }
-
-        // Left/right (strafe)
-        if (this.input.right) {
-            this.velocity.x += cos * speed;
-            this.velocity.z -= sin * speed;
-        }
-        if (this.input.left) {
-            this.velocity.x -= cos * speed;
-            this.velocity.z += sin * speed;
-        }
-
-        // Normalize diagonal movement
-        const hSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
-        if (hSpeed > speed) {
-            const scale = speed / hSpeed;
-            this.velocity.x *= scale;
-            this.velocity.z *= scale;
-        }
-    }
-
-    _updatePhysics(dt) {
-        const pos = this.camera.position;
 
         // Jump
-        if (this.input.jump && this.isOnGround) {
-            this.velocity.y = this.jumpForce;
+        if (this.jump && this.isOnGround) {
+            this.velocityY = this.jumpForce;
             this.isOnGround = false;
+            this.jump = false;
         }
 
         // Gravity
-        if (!this.isOnGround) {
-            this.velocity.y -= this.gravity * dt;
-        }
+        this.velocityY -= this.gravity * dt;
 
-        // X movement with collision
-        this._testPos.set(pos.x + this.velocity.x * dt, pos.y, pos.z);
+        // Position updates with collision
+        const pos = this.camera.position;
+
+        // X collision
+        this._testPos.set(pos.x + vx * dt, pos.y, pos.z);
         if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
             pos.x = this._testPos.x;
         }
 
-        // Z movement with collision
-        this._testPos.set(pos.x, pos.y, pos.z + this.velocity.z * dt);
+        // Z collision
+        this._testPos.set(pos.x, pos.y, pos.z + vz * dt);
         if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
             pos.z = this._testPos.z;
         }
 
         // Y movement
-        pos.y += this.velocity.y * dt;
+        pos.y += this.velocityY * dt;
 
         // Ground check
         const groundY = this.arena.getFloorHeight(pos.x, pos.z) + this.playerHeight;
         if (pos.y <= groundY) {
             pos.y = groundY;
-            this.velocity.y = 0;
+            this.velocityY = 0;
             this.isOnGround = true;
         } else {
             this.isOnGround = false;
@@ -234,45 +178,35 @@ export class Player {
     takeDamage(amount) {
         if (this.isDead) return;
         this.health -= amount;
-        this.showDamageEffect();
+        const flash = document.getElementById('damage-flash');
+        if (flash) {
+            flash.style.opacity = '1';
+            setTimeout(() => flash.style.opacity = '0', 100);
+        }
         if (this.health <= 0) {
             this.health = 0;
             this.die();
         }
     }
 
-    showDamageEffect() {
-        const flash = document.getElementById('damage-flash');
-        if (flash) {
-            flash.style.opacity = '1';
-            setTimeout(() => flash.style.opacity = '0', 100);
-        }
-    }
-
     die() {
         this.isDead = true;
-        this.unlock();
+        if (document.pointerLockElement) document.exitPointerLock();
     }
 
     reset() {
         this.health = this.maxHealth;
         this.isDead = false;
-        this.velocity.set(0, 0, 0);
         this.camera.position.set(0, this.playerHeight, 5);
-        this.pitch = this.targetPitch = 0;
-        this.yaw = this.targetYaw = 0;
-        this._syncRotation();
+        this.camera.rotation.set(0, 0, 0);
+        this.velocityY = 0;
         this.isOnGround = true;
-        this._hasMouseInput = false;
-
-        // Reset input
-        for (const key in this.input) {
-            this.input[key] = false;
-        }
+        this.moveF = this.moveB = this.moveL = this.moveR = false;
+        this.sprint = this.jump = false;
     }
 
     getPosition() {
-        return this.camera.position.clone();
+        return this.camera.position;
     }
 
     lock() {
@@ -280,9 +214,7 @@ export class Player {
     }
 
     unlock() {
-        if (document.pointerLockElement) {
-            document.exitPointerLock();
-        }
+        if (document.pointerLockElement) document.exitPointerLock();
     }
 
     get isLocked() {
@@ -294,7 +226,7 @@ export class Player {
             isLocked: this._isLocked,
             lock: () => this.lock(),
             unlock: () => this.unlock(),
-            addEventListener: (evt, cb) => this.domElement.addEventListener(evt, cb)
+            addEventListener: (event, cb) => this.domElement.addEventListener(event, cb)
         };
     }
 }
