@@ -145,6 +145,7 @@ class Game {
         this.shooting.onHit = (enemy, damage, hitPoint, isHeadshot) => {
             const killed = enemy.takeDamage(damage);
             this.audio.playHit();
+            this.hud.showHitmarker(isHeadshot); // Show hitmarker
             if (killed) {
                 this.waveManager.onEnemyDeath(enemy);
             }

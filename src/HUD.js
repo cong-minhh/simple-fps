@@ -9,16 +9,49 @@ export class HUD {
             enemies: document.getElementById('enemies'),
             timer: document.getElementById('timer'),
             score: document.getElementById('score'),
-            indicators: document.getElementById('enemy-indicators')
+            indicators: document.getElementById('enemy-indicators'),
+            hitmarker: document.getElementById('hitmarker')
         };
 
         this.startTime = 0;
         this.currentScore = 0;
+        this.hitmarkerTimeout = null;
 
         // Edge indicator settings
         this.indicatorPool = [];
         this.maxIndicators = 10;
         this.edgePadding = 50; // Distance from screen edge
+    }
+
+    /**
+     * Show hitmarker when hitting an enemy
+     * @param {boolean} isHeadshot - Whether this was a headshot
+     */
+    showHitmarker(isHeadshot = false) {
+        const hitmarker = this.elements.hitmarker;
+
+        // Clear any existing timeout
+        if (this.hitmarkerTimeout) {
+            clearTimeout(this.hitmarkerTimeout);
+        }
+
+        // Reset classes
+        hitmarker.classList.remove('show', 'headshot', 'hidden');
+
+        // Force reflow for animation restart
+        void hitmarker.offsetWidth;
+
+        // Add appropriate classes
+        hitmarker.classList.add('show');
+        if (isHeadshot) {
+            hitmarker.classList.add('headshot');
+        }
+
+        // Hide after animation
+        this.hitmarkerTimeout = setTimeout(() => {
+            hitmarker.classList.remove('show', 'headshot');
+            hitmarker.classList.add('hidden');
+        }, isHeadshot ? 250 : 150);
     }
 
     show() {

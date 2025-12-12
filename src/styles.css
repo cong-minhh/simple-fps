@@ -52,6 +52,97 @@ canvas {
   user-select: none;
 }
 
+/* Hitmarker - CS:GO style X with gap in center */
+#hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Four diagonal lines using gradients */
+#hitmarker::before,
+#hitmarker::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: -1px;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(to bottom,
+      white 0%, white 30%,
+      transparent 30%, transparent 70%,
+      white 70%, white 100%);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+  transform-origin: center center;
+}
+
+#hitmarker::before {
+  transform: rotate(45deg);
+}
+
+#hitmarker::after {
+  transform: rotate(-45deg);
+}
+
+#hitmarker.show {
+  opacity: 1;
+  animation: csgo-hit 0.12s ease-out;
+}
+
+/* Headshot - red with bigger spread */
+#hitmarker.headshot::before,
+#hitmarker.headshot::after {
+  width: 3px;
+  height: 26px;
+  background: linear-gradient(to bottom,
+      #ff0000 0%, #ff0000 25%,
+      transparent 25%, transparent 75%,
+      #ff0000 75%, #ff0000 100%);
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.9);
+}
+
+#hitmarker.headshot {
+  animation: csgo-headshot 0.18s ease-out;
+}
+
+@keyframes csgo-hit {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes csgo-headshot {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 #health-container {
   position: absolute;
   bottom: 30px;
