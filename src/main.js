@@ -225,6 +225,13 @@ class Game {
             } else {
                 this.waveManager.update(dt);
 
+                // Update enemy direction indicators every frame for smooth tracking
+                this.hud.updateEnemyIndicators(
+                    this.player.getPosition(),
+                    this.camera.rotation.y,
+                    this.waveManager.enemies
+                );
+
                 // Update HUD less frequently (every ~100ms)
                 if (Math.floor(time / 100) !== Math.floor((time - dt * 1000) / 100)) {
                     this.hud.updateHealth(this.player.health, this.player.maxHealth);

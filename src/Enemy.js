@@ -12,21 +12,78 @@ const STATES = {
     IDLE: 'IDLE'
 };
 
+// Enemy type configurations
+const ENEMY_TYPES = {
+    NORMAL: {
+        name: 'Normal',
+        health: [40, 60],
+        speed: 2.5,
+        damage: 10,
+        attackCooldown: 0.8,
+        attackRange: 2,
+        bodyColor: 0xff4444,
+        headColor: 0xffaaaa,
+        scale: 1.0
+    },
+    RUNNER: {
+        name: 'Runner',
+        health: [20, 30],
+        speed: 4.5,
+        damage: 8,
+        attackCooldown: 0.5,
+        attackRange: 1.5,
+        bodyColor: 0x44ff44,
+        headColor: 0xaaffaa,
+        scale: 0.8
+    },
+    TANK: {
+        name: 'Tank',
+        health: [100, 140],
+        speed: 1.5,
+        damage: 20,
+        attackCooldown: 1.5,
+        attackRange: 2.5,
+        bodyColor: 0x4444ff,
+        headColor: 0xaaaaff,
+        scale: 1.3
+    },
+    BERSERKER: {
+        name: 'Berserker',
+        health: [50, 70],
+        speed: 3.5,
+        damage: 15,
+        attackCooldown: 0.4,
+        attackRange: 2,
+        bodyColor: 0xff44ff,
+        headColor: 0xffaaff,
+        scale: 1.1
+    }
+};
+
+export { ENEMY_TYPES };
+
 export class Enemy {
-    constructor(scene, arena, position, pathfinder = null) {
+    constructor(scene, arena, position, pathfinder = null, type = 'NORMAL') {
         this.scene = scene;
         this.arena = arena;
         this.pathfinder = pathfinder;
+        this.type = type;
 
-        // Stats
-        this.health = 40 + Math.random() * 20; // 40-60 HP
+        // Get type config
+        const config = ENEMY_TYPES[type] || ENEMY_TYPES.NORMAL;
+
+        // Stats from type
+        this.health = config.health[0] + Math.random() * (config.health[1] - config.health[0]);
         this.maxHealth = this.health;
-        this.speed = 2.5;
+        this.speed = config.speed;
         this.detectionRange = 20;
-        this.attackRange = 2;
-        this.attackDamage = 10;
-        this.attackCooldown = 0.8;
+        this.attackRange = config.attackRange;
+        this.attackDamage = config.damage;
+        this.attackCooldown = config.attackCooldown;
         this.lastAttackTime = 0;
+        this.bodyColor = config.bodyColor;
+        this.headColor = config.headColor;
+        this.scale = config.scale;
 
         // State
         this.state = STATES.PATROL;
@@ -77,7 +134,7 @@ export class Enemy {
         // Body (capsule approximation using cylinder + spheres)
         const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1, 8);
         const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff4444,
+            color: this.bodyColor,
             roughness: 0.5,
             metalness: 0.3
         });
@@ -89,7 +146,7 @@ export class Enemy {
         // Head (cube) - marked for headshot detection
         const headGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
         const headMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffaaaa,
+            color: this.headColor,
             roughness: 0.4,
             metalness: 0.2
         });
@@ -131,6 +188,9 @@ export class Enemy {
         this.healthBar.position.y = 1.8;
         this.healthBar.position.z = 0.01;
         group.add(this.healthBar);
+
+        // Apply type-based scale
+        group.scale.setScalar(this.scale);
 
         return group;
     }

@@ -91,7 +91,7 @@ canvas {
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
 }
 
-#stats > div {
+#stats>div {
   margin-bottom: 8px;
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.5);
@@ -172,7 +172,9 @@ canvas {
   box-shadow: 0 0 30px rgba(0, 255, 136, 0.6);
 }
 
-#high-score, #final-score, #final-time {
+#high-score,
+#final-score,
+#final-time {
   font-size: 18px;
   color: #888;
   margin-top: 20px;
@@ -190,8 +192,15 @@ canvas {
 }
 
 @keyframes pulse {
-  from { opacity: 0.7; transform: scale(1); }
-  to { opacity: 1; transform: scale(1.1); }
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1.1);
+  }
 }
 
 /* Game Over specific */
@@ -239,4 +248,81 @@ canvas {
   pointer-events: none;
   opacity: 0;
   z-index: 90;
+}
+
+/* Screen Edge Enemy Indicators */
+#enemy-indicators {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 99;
+}
+
+.edge-indicator {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 18px solid #ff4444;
+  filter: drop-shadow(0 0 6px rgba(255, 68, 68, 0.9));
+  transition: opacity 0.15s ease;
+}
+
+.edge-indicator.close {
+  border-bottom-color: #ff0000;
+  filter: drop-shadow(0 0 15px rgba(255, 0, 0, 1));
+  animation: edge-pulse 0.4s ease infinite alternate;
+}
+
+.edge-indicator.medium {
+  border-bottom-color: #ffaa00;
+  filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.8));
+}
+
+.edge-indicator.far {
+  border-bottom-color: #ffff00;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 0, 0.6));
+  opacity: 0.7;
+}
+
+.edge-indicator.runner {
+  border-bottom-color: #44ff44;
+  filter: drop-shadow(0 0 8px rgba(68, 255, 68, 0.9));
+}
+
+.edge-indicator.tank {
+  border-bottom-color: #4488ff;
+  filter: drop-shadow(0 0 6px rgba(68, 136, 255, 0.9));
+  border-left-width: 12px;
+  border-right-width: 12px;
+  border-bottom-width: 22px;
+}
+
+.edge-indicator.berserker {
+  border-bottom-color: #ff44ff;
+  filter: drop-shadow(0 0 8px rgba(255, 68, 255, 0.9));
+}
+
+@keyframes edge-pulse {
+  from {
+    opacity: 0.7;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+
+/* Radar grid lines */
+#enemy-indicators::before {
+  content: none;
+}
+
+#enemy-indicators::after {
+  content: none;
 }
