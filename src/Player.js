@@ -21,6 +21,11 @@ export class Player {
         this.playerHeight = 1.6;
         this.playerRadius = 0.4;
 
+        // Peek/Lean settings
+        this.peekAngle = 15 * Math.PI / 180; // 15 degrees tilt
+        this.peekOffset = 0.4; // Horizontal offset when leaning
+        this.peekSpeed = 8; // Transition speed
+
         // Mouse sensitivity (radians per pixel)
         this.sensitivity = 0.002;
 
@@ -33,6 +38,12 @@ export class Player {
         this.isCrouching = false;
         this.velocityY = 0;
 
+        // Peek state
+        this.currentPeekAngle = 0;
+        this.currentPeekOffset = 0;
+        this.targetPeekAngle = 0;
+        this.targetPeekOffset = 0;
+
         // Input flags - using direct booleans for speed
         this.moveF = false;
         this.moveB = false;
@@ -41,6 +52,8 @@ export class Player {
         this.sprint = false;
         this.jump = false;
         this.crouch = false;
+        this.peekLeft = false;
+        this.peekRight = false;
 
         // Reusable vectors to avoid GC
         this._testPos = new THREE.Vector3();
@@ -90,6 +103,8 @@ export class Player {
             case 'ShiftLeft': case 'ShiftRight': this.sprint = true; break;
             case 'Space': if (this.isOnGround && !this.isCrouching) this.jump = true; break;
             case 'KeyC': this.crouch = true; break;
+            case 'KeyQ': this.peekLeft = true; break;
+            case 'KeyE': this.peekRight = true; break;
         }
     }
 
@@ -101,6 +116,8 @@ export class Player {
             case 'KeyD': case 'ArrowRight': this.moveR = false; break;
             case 'ShiftLeft': case 'ShiftRight': this.sprint = false; break;
             case 'KeyC': this.crouch = false; break;
+            case 'KeyQ': this.peekLeft = false; break;
+            case 'KeyE': this.peekRight = false; break;
         }
     }
 
@@ -116,6 +133,12 @@ export class Player {
 
     update(dt) {
         if (this.isDead || !this._isLocked) return;
+
+        // Undo previous peek offset before physics
+        if (this._peekOffsetX !== undefined) {
+            this.camera.position.x -= this._peekOffsetX;
+            this.camera.position.z -= this._peekOffsetZ;
+        }
 
         // Cap delta to prevent explosion
         if (dt > 0.1) dt = 0.1;
@@ -192,6 +215,41 @@ export class Player {
         } else {
             this.isOnGround = false;
         }
+
+        // Peek/Lean update
+        if (this.peekLeft && !this.peekRight) {
+            this.targetPeekAngle = this.peekAngle;
+            this.targetPeekOffset = -this.peekOffset;
+        } else if (this.peekRight && !this.peekLeft) {
+            this.targetPeekAngle = -this.peekAngle;
+            this.targetPeekOffset = this.peekOffset;
+        } else {
+            this.targetPeekAngle = 0;
+            this.targetPeekOffset = 0;
+        }
+
+        // Smooth interpolation for peek
+        const peekLerp = 1 - Math.exp(-this.peekSpeed * dt);
+        this.currentPeekAngle += (this.targetPeekAngle - this.currentPeekAngle) * peekLerp;
+        this.currentPeekOffset += (this.targetPeekOffset - this.currentPeekOffset) * peekLerp;
+
+        // Apply peek tilt (Z rotation)
+        this.camera.rotation.z = this.currentPeekAngle;
+
+        // Apply horizontal offset based on camera yaw
+        // Calculate lateral offset in world space
+        const peekYaw = this.camera.rotation.y;
+        const offsetX = Math.cos(peekYaw) * this.currentPeekOffset;
+        const offsetZ = -Math.sin(peekYaw) * this.currentPeekOffset;
+
+        // Store base position and add offset for rendering
+        // (offset is visual only, collision uses base pos)
+        this.camera.position.x += offsetX;
+        this.camera.position.z += offsetZ;
+
+        // Store for next frame to undo
+        this._peekOffsetX = offsetX;
+        this._peekOffsetZ = offsetZ;
     }
 
     takeDamage(amount) {
