@@ -172,6 +172,110 @@ canvas {
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
+/* Weapon HUD */
+#weapon-hud {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  text-align: right;
+  font-family: 'Orbitron', sans-serif;
+}
+
+#weapon-name {
+  font-size: 18px;
+  font-weight: bold;
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+  margin-bottom: 5px;
+}
+
+#ammo-count {
+  font-size: 28px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+#ammo-count.low {
+  color: #ff4444;
+  animation: ammo-pulse 0.5s ease infinite alternate;
+}
+
+#ammo-count.reloading {
+  color: #ffaa00;
+}
+
+@keyframes ammo-pulse {
+  from {
+    opacity: 0.6;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Weapon Selector - CS:GO style */
+#weapon-selector {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.weapon-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 70px;
+}
+
+.weapon-slot:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.weapon-slot.active {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: #00ff88;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+}
+
+.slot-key {
+  font-size: 12px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.weapon-slot.active .slot-key {
+  color: #00ff88;
+}
+
+.slot-name {
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+}
+
+.weapon-slot.active .slot-name {
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+}
+
 #stats {
   position: absolute;
   top: 20px;

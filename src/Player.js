@@ -37,6 +37,9 @@ export class Player {
         this.isOnGround = true;
         this.isCrouching = false;
         this.velocityY = 0;
+        this.velocityX = 0; // Horizontal velocity for air momentum
+        this.velocityZ = 0;
+        this.airControl = 0.3; // How much control player has in air (0-1)
 
         // Peek state
         this.currentPeekAngle = 0;
@@ -163,19 +166,44 @@ export class Player {
         const c = Math.cos(yaw);
 
         // Forward: -sin, -cos | Right: cos, -sin
-        let vx = 0, vz = 0;
+        let inputX = 0, inputZ = 0;
 
-        if (this.moveF) { vx -= s; vz -= c; }
-        if (this.moveB) { vx += s; vz += c; }
-        if (this.moveR) { vx += c; vz -= s; }
-        if (this.moveL) { vx -= c; vz += s; }
+        if (this.moveF) { inputX -= s; inputZ -= c; }
+        if (this.moveB) { inputX += s; inputZ += c; }
+        if (this.moveR) { inputX += c; inputZ -= s; }
+        if (this.moveL) { inputX -= c; inputZ += s; }
 
         // Normalize if moving diagonally
-        const len = Math.sqrt(vx * vx + vz * vz);
+        const len = Math.sqrt(inputX * inputX + inputZ * inputZ);
         if (len > 0) {
             const inv = speed / len;
-            vx *= inv;
-            vz *= inv;
+            inputX *= inv;
+            inputZ *= inv;
+        }
+
+        // Apply movement based on ground/air state
+        if (this.isOnGround) {
+            // On ground: direct control, update stored velocity
+            this.velocityX = inputX;
+            this.velocityZ = inputZ;
+        } else {
+            // In air: maintain momentum with limited air control
+            if (len > 0) {
+                // Add air control (player can slightly steer)
+                this.velocityX += inputX * this.airControl * dt * 10;
+                this.velocityZ += inputZ * this.airControl * dt * 10;
+
+                // Cap air velocity to not exceed ground speed
+                const airSpeed = Math.sqrt(this.velocityX * this.velocityX + this.velocityZ * this.velocityZ);
+                if (airSpeed > speed) {
+                    const airInv = speed / airSpeed;
+                    this.velocityX *= airInv;
+                    this.velocityZ *= airInv;
+                }
+            }
+            // Air friction (slight slowdown)
+            this.velocityX *= 0.995;
+            this.velocityZ *= 0.995;
         }
 
         // Jump
@@ -192,15 +220,19 @@ export class Player {
         const pos = this.camera.position;
 
         // X collision
-        this._testPos.set(pos.x + vx * dt, pos.y, pos.z);
+        this._testPos.set(pos.x + this.velocityX * dt, pos.y, pos.z);
         if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
             pos.x = this._testPos.x;
+        } else {
+            this.velocityX = 0; // Stop momentum on collision
         }
 
         // Z collision
-        this._testPos.set(pos.x, pos.y, pos.z + vz * dt);
+        this._testPos.set(pos.x, pos.y, pos.z + this.velocityZ * dt);
         if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
             pos.z = this._testPos.z;
+        } else {
+            this.velocityZ = 0; // Stop momentum on collision
         }
 
         // Y movement

@@ -151,6 +151,10 @@ class Game {
             }
         };
 
+        this.shooting.onWeaponChange = (weapon, ammo) => {
+            this.hud.updateWeapon(weapon, ammo, this.shooting.isReloading);
+        };
+
         // Player damage audio
         const origTakeDamage = this.player.takeDamage.bind(this.player);
         this.player.takeDamage = (amount) => {
@@ -220,6 +224,7 @@ class Game {
         // Update game state
         if (this.state === STATES.PLAYING) {
             this.player.update(dt);
+            this.shooting.update(dt); // Update weapon system (ADS, recoil)
 
             if (this.player.isDead) {
                 this.gameOver();

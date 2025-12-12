@@ -27,6 +27,30 @@
       <div id="timer">Time: 0s</div>
       <div id="score">Score: 0</div>
     </div>
+    <!-- Weapon HUD -->
+    <div id="weapon-hud">
+      <div id="weapon-name">Pistol</div>
+      <div id="ammo-count">12 / 12</div>
+    </div>
+    <!-- Weapon Selector -->
+    <div id="weapon-selector">
+      <div class="weapon-slot active" data-slot="1">
+        <span class="slot-key">1</span>
+        <span class="slot-name">Rifle</span>
+      </div>
+      <div class="weapon-slot" data-slot="2">
+        <span class="slot-key">2</span>
+        <span class="slot-name">SMG</span>
+      </div>
+      <div class="weapon-slot" data-slot="3">
+        <span class="slot-key">3</span>
+        <span class="slot-name">Shotgun</span>
+      </div>
+      <div class="weapon-slot" data-slot="4">
+        <span class="slot-key">4</span>
+        <span class="slot-name">Pistol</span>
+      </div>
+    </div>
     <!-- Enemy Direction Indicators -->
     <div id="enemy-indicators"></div>
   </div>
@@ -36,13 +60,13 @@
     <h1>VERCEL FPS</h1>
     <h2>Low-Poly Arena</h2>
     <p class="instructions">
-      WASD - Move<br>
-      SHIFT - Sprint<br>
-      SPACE - Jump<br>
-      C - Crouch<br>
+      WASD - Move | SHIFT - Sprint<br>
+      SPACE - Jump | C - Crouch<br>
       Q/E - Peek Left/Right<br>
-      MOUSE - Aim<br>
-      CLICK - Shoot
+      1-4 - Switch Weapons<br>
+      R - Reload<br>
+      LEFT CLICK - Shoot<br>
+      RIGHT CLICK - Aim (ADS)
     </p>
     <button id="start-btn">CLICK TO PLAY</button>
     <p id="high-score">High Score: 0</p>

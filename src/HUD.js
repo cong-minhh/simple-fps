@@ -10,7 +10,9 @@ export class HUD {
             timer: document.getElementById('timer'),
             score: document.getElementById('score'),
             indicators: document.getElementById('enemy-indicators'),
-            hitmarker: document.getElementById('hitmarker')
+            hitmarker: document.getElementById('hitmarker'),
+            weaponName: document.getElementById('weapon-name'),
+            ammoCount: document.getElementById('ammo-count')
         };
 
         this.startTime = 0;
@@ -21,6 +23,32 @@ export class HUD {
         this.indicatorPool = [];
         this.maxIndicators = 10;
         this.edgePadding = 50; // Distance from screen edge
+    }
+
+    updateWeapon(weapon, ammo, isReloading = false) {
+        if (this.elements.weaponName) {
+            this.elements.weaponName.textContent = weapon.name;
+        }
+        if (this.elements.ammoCount) {
+            if (isReloading) {
+                this.elements.ammoCount.textContent = 'RELOADING...';
+                this.elements.ammoCount.className = 'reloading';
+            } else {
+                this.elements.ammoCount.textContent = `${ammo} / ${weapon.magazineSize}`;
+                this.elements.ammoCount.className = ammo <= weapon.magazineSize * 0.3 ? 'low' : '';
+            }
+        }
+
+        // Update weapon selector highlight
+        const weaponSlots = document.querySelectorAll('.weapon-slot');
+        const weaponNames = ['Rifle', 'SMG', 'Shotgun', 'Pistol'];
+        weaponSlots.forEach((slot, index) => {
+            if (weaponNames[index] === weapon.name) {
+                slot.classList.add('active');
+            } else {
+                slot.classList.remove('active');
+            }
+        });
     }
 
     /**
