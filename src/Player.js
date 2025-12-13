@@ -21,10 +21,11 @@ export class Player {
         this.playerHeight = 1.6;
         this.playerRadius = 0.4;
 
-        // Peek/Lean settings
-        this.peekAngle = 15 * Math.PI / 180; // 15 degrees tilt
-        this.peekOffset = 0.4; // Horizontal offset when leaning
-        this.peekSpeed = 8; // Transition speed
+        // Peek/Lean settings (Delta Force style - dramatic body lean)
+        this.peekAngle = 10 * Math.PI / 180; // 20 degrees tilt (more dramatic)
+        this.peekOffset = 0.7; // Larger horizontal offset for full body lean
+        this.peekDropHeight = 0.15; // Vertical drop when leaning
+        this.peekSpeed = 8; // Faster, snappier transition
 
         // Mouse sensitivity (radians per pixel)
         this.sensitivity = 0.002;
@@ -44,8 +45,10 @@ export class Player {
         // Peek state
         this.currentPeekAngle = 0;
         this.currentPeekOffset = 0;
+        this.currentPeekDrop = 0; // Vertical drop when leaning
         this.targetPeekAngle = 0;
         this.targetPeekOffset = 0;
+        this.targetPeekDrop = 0;
 
         // Audio callbacks
         this.onFootstep = null;
@@ -144,10 +147,11 @@ export class Player {
     update(dt) {
         if (this.isDead || !this._isLocked) return;
 
-        // Undo previous peek offset before physics
+        // Undo previous peek offset before physics (including vertical drop)
         if (this._peekOffsetX !== undefined) {
             this.camera.position.x -= this._peekOffsetX;
             this.camera.position.z -= this._peekOffsetZ;
+            this.camera.position.y -= this._peekOffsetY;
         }
 
         // Cap delta to prevent explosion
@@ -190,13 +194,29 @@ export class Player {
 
         // Apply movement based on ground/air state
         if (this.isOnGround) {
-            // On ground: direct control, update stored velocity
-            this.velocityX = inputX;
-            this.velocityZ = inputZ;
-        } else {
-            // In air: maintain momentum with limited air control
+            // Ground movement with smooth acceleration/deceleration
+            const groundAccel = 15; // How fast player accelerates
+            const groundFriction = 8; // How fast player decelerates when no input
+
             if (len > 0) {
-                // Add air control (player can slightly steer)
+                // Accelerate towards target velocity
+                const accelRate = groundAccel * dt;
+                this.velocityX += (inputX - this.velocityX) * Math.min(1, accelRate);
+                this.velocityZ += (inputZ - this.velocityZ) * Math.min(1, accelRate);
+            } else {
+                // Apply friction when no input - smooth deceleration
+                const frictionRate = 1 - Math.min(1, groundFriction * dt);
+                this.velocityX *= frictionRate;
+                this.velocityZ *= frictionRate;
+
+                // Stop completely at very low speeds to avoid sliding forever
+                if (Math.abs(this.velocityX) < 0.01) this.velocityX = 0;
+                if (Math.abs(this.velocityZ) < 0.01) this.velocityZ = 0;
+            }
+        } else {
+            // In air: preserve momentum, allow limited air steering
+            if (len > 0) {
+                // Add air control (player can slightly steer mid-air)
                 this.velocityX += inputX * this.airControl * dt * 10;
                 this.velocityZ += inputZ * this.airControl * dt * 10;
 
@@ -208,9 +228,10 @@ export class Player {
                     this.velocityZ *= airInv;
                 }
             }
-            // Air friction (slight slowdown)
-            this.velocityX *= 0.995;
-            this.velocityZ *= 0.995;
+            // Minimal air friction - momentum is mostly preserved
+            // This ensures player completes their arc when releasing keys
+            this.velocityX *= 0.999;
+            this.velocityZ *= 0.999;
         }
 
         // Jump
@@ -275,40 +296,51 @@ export class Player {
             this.footstepTimer = 0;
         }
 
-        // Peek/Lean update
+        // Peek/Lean update (Delta Force style - full body lean)
         if (this.peekLeft && !this.peekRight) {
             this.targetPeekAngle = this.peekAngle;
             this.targetPeekOffset = -this.peekOffset;
+            this.targetPeekDrop = -this.peekDropHeight; // Drop down when leaning
         } else if (this.peekRight && !this.peekLeft) {
             this.targetPeekAngle = -this.peekAngle;
             this.targetPeekOffset = this.peekOffset;
+            this.targetPeekDrop = -this.peekDropHeight; // Drop down when leaning
         } else {
             this.targetPeekAngle = 0;
             this.targetPeekOffset = 0;
+            this.targetPeekDrop = 0;
         }
 
-        // Smooth interpolation for peek
+        // Smooth interpolation for peek (fast & snappy like Delta Force)
         const peekLerp = 1 - Math.exp(-this.peekSpeed * dt);
         this.currentPeekAngle += (this.targetPeekAngle - this.currentPeekAngle) * peekLerp;
         this.currentPeekOffset += (this.targetPeekOffset - this.currentPeekOffset) * peekLerp;
+        this.currentPeekDrop += (this.targetPeekDrop - this.currentPeekDrop) * peekLerp;
 
-        // Apply peek tilt (Z rotation)
+        // Apply peek tilt (Z rotation) - dramatic body tilt
         this.camera.rotation.z = this.currentPeekAngle;
 
-        // Apply horizontal offset based on camera yaw
-        // Calculate lateral offset in world space
+        // Calculate lateral offset in world space based on camera yaw
         const peekYaw = this.camera.rotation.y;
         const offsetX = Math.cos(peekYaw) * this.currentPeekOffset;
         const offsetZ = -Math.sin(peekYaw) * this.currentPeekOffset;
 
+        // Slight forward lean when peeking (body leans around corner)
+        const peekAmount = Math.abs(this.currentPeekOffset) / this.peekOffset;
+        const forwardLean = peekAmount * 0.15; // Lean forward slightly
+        const forwardX = -Math.sin(peekYaw) * forwardLean;
+        const forwardZ = -Math.cos(peekYaw) * forwardLean;
+
         // Store base position and add offset for rendering
         // (offset is visual only, collision uses base pos)
-        this.camera.position.x += offsetX;
-        this.camera.position.z += offsetZ;
+        this.camera.position.x += offsetX + forwardX;
+        this.camera.position.z += offsetZ + forwardZ;
+        this.camera.position.y += this.currentPeekDrop;
 
         // Store for next frame to undo
-        this._peekOffsetX = offsetX;
-        this._peekOffsetZ = offsetZ;
+        this._peekOffsetX = offsetX + forwardX;
+        this._peekOffsetZ = offsetZ + forwardZ;
+        this._peekOffsetY = this.currentPeekDrop;
     }
 
     takeDamage(amount) {

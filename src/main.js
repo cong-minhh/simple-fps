@@ -52,6 +52,13 @@ class Game {
         // Handle window resize
         window.addEventListener('resize', () => this.onResize());
 
+        // Click to re-lock pointer when playing (after losing focus)
+        this.renderer.domElement.addEventListener('click', () => {
+            if (this.state === STATES.PLAYING && !this.player.isLocked) {
+                this.player.lock();
+            }
+        });
+
         // Bind animate for optimal performance
         this.animate = this.animate.bind(this);
 

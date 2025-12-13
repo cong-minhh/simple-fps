@@ -329,12 +329,49 @@ export class Shooting {
         sight.position.set(0, model.bodySize[1] / 2 + 0.02, 0);
         gunGroup.add(sight);
 
+        // 3D Muzzle flash at barrel tip
+        const muzzleFlashTexture = this.createMuzzleFlashTexture();
+        const muzzleFlashMaterial = new THREE.SpriteMaterial({
+            map: muzzleFlashTexture,
+            color: 0xffcc44,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        this.muzzleFlashSprite = new THREE.Sprite(muzzleFlashMaterial);
+        this.muzzleFlashSprite.scale.set(0.15, 0.15, 0.15);
+        // Position at barrel tip
+        const barrelTipZ = -(model.bodySize[2] / 2 + model.barrelSize[2] + 0.02);
+        this.muzzleFlashSprite.position.set(0, 0.02, barrelTipZ);
+        this.muzzleFlashSprite.visible = false;
+        gunGroup.add(this.muzzleFlashSprite);
+
         // Position gun
         gunGroup.position.copy(this.defaultGunPos);
         gunGroup.rotation.y = -0.1;
 
         this.gunModel = gunGroup;
         this.camera.add(gunGroup);
+    }
+
+    createMuzzleFlashTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+
+        // Create radial gradient for flash
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 200, 1)');
+        gradient.addColorStop(0.3, 'rgba(255, 200, 50, 0.8)');
+        gradient.addColorStop(0.6, 'rgba(255, 150, 0, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
     }
 
     setEnemyMeshes(meshes) {
@@ -613,10 +650,20 @@ export class Shooting {
     }
 
     showMuzzleFlash() {
-        const flash = document.getElementById('muzzle-flash');
-        if (flash) {
-            flash.style.opacity = '1';
-            setTimeout(() => flash.style.opacity = '0', 50);
+        // Use 3D muzzle flash sprite attached to gun barrel
+        if (this.muzzleFlashSprite) {
+            this.muzzleFlashSprite.visible = true;
+            // Random rotation and slight scale variation for visual variety
+            this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
+            const scale = 0.12 + Math.random() * 0.06;
+            this.muzzleFlashSprite.scale.set(scale, scale, scale);
+
+            // Hide after brief flash
+            setTimeout(() => {
+                if (this.muzzleFlashSprite) {
+                    this.muzzleFlashSprite.visible = false;
+                }
+            }, 50);
         }
     }
 
