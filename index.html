@@ -15,7 +15,7 @@
 
   <!-- HUD Overlay -->
   <div id="hud" class="hidden">
-    <div id="crosshair">+</div>
+    <div id="crosshair"></div>
     <div id="hitmarker" class="hidden"></div>
     <!-- Reload Indicator -->
     <div id="reload-indicator" class="hidden">
@@ -23,7 +23,9 @@
       <span class="reload-text">R</span>
     </div>
     <div id="health-container">
-      <div id="health-bar"></div>
+      <div id="health-bar-bg">
+        <div id="health-bar"></div>
+      </div>
       <span id="health-text">100</span>
     </div>
     <div id="stats">
@@ -60,22 +62,36 @@
     <div id="enemy-indicators"></div>
   </div>
 
+
   <!-- Start Menu -->
   <div id="start-menu" class="menu">
-    <h1>VERCEL FPS</h1>
-    <h2>Low-Poly Arena</h2>
-    <p class="instructions">
-      WASD - Move | SHIFT - Sprint<br>
-      SPACE - Jump | C - Crouch<br>
-      Q/E - Peek Left/Right<br>
-      1-4 - Switch Weapons<br>
-      R - Reload<br>
-      LEFT CLICK - Shoot<br>
-      RIGHT CLICK - Aim (ADS)
-    </p>
-    <button id="start-btn">CLICK TO PLAY</button>
-    <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
-    <p id="high-score">High Score: 0</p>
+    <div class="menu-content">
+      <h1 class="glitch-title" data-text="VERCEL FPS">VERCEL FPS</h1>
+      <p class="subtitle">LOW-POLY ARENA</p>
+
+      <div class="menu-controls">
+        <button id="start-btn" class="menu-btn primary">
+          <span class="btn-text">INITIALIZE</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="settings-btn" class="menu-btn secondary">
+          <span class="btn-text">SYSTEM</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+
+      <div class="stats-display">
+        <p id="high-score">RECORD // 0</p>
+      </div>
+
+      <div class="instructions-panel">
+        <div class="key-row"><span>WASD</span> MOVE</div>
+        <div class="key-row"><span>SHIFT</span> SPRINT</div>
+        <div class="key-row"><span>SPACE</span> JUMP</div>
+        <div class="key-row"><span>LMB</span> SHOOT</div>
+        <div class="key-row"><span>RMB</span> AIM</div>
+      </div>
+    </div>
   </div>
 
   <!-- Settings Panel -->
@@ -93,6 +109,13 @@
         <label for="flicker-toggle">Flickering Lights</label>
         <label class="toggle-switch">
           <input type="checkbox" id="flicker-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <label for="hitmarker-toggle">Hitmarker</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="hitmarker-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>

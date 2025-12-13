@@ -12,6 +12,7 @@ export class Menu {
             settingsBackBtn: document.getElementById('settings-back-btn'),
             particlesToggle: document.getElementById('particles-toggle'),
             flickerToggle: document.getElementById('flicker-toggle'),
+            hitmarkerToggle: document.getElementById('hitmarker-toggle'),
             highScore: document.getElementById('high-score'),
             finalScore: document.getElementById('final-score'),
             finalTime: document.getElementById('final-time'),
@@ -21,12 +22,15 @@ export class Menu {
         // Settings state (load from localStorage)
         this.settings = {
             particles: localStorage.getItem('fps_particles') !== 'false',
-            flickerLights: localStorage.getItem('fps_flicker') !== 'false'
+            particles: localStorage.getItem('fps_particles') !== 'false',
+            flickerLights: localStorage.getItem('fps_flicker') !== 'false',
+            hitmarkers: localStorage.getItem('fps_hitmarkers') !== 'false'
         };
 
         // Apply initial toggle states
         this.elements.particlesToggle.checked = this.settings.particles;
         this.elements.flickerToggle.checked = this.settings.flickerLights;
+        this.elements.hitmarkerToggle.checked = this.settings.hitmarkers;
 
         // Callbacks
         this.onStart = null;
@@ -74,6 +78,15 @@ export class Menu {
             localStorage.setItem('fps_flicker', this.settings.flickerLights);
             if (this.onSettingsChange) {
                 this.onSettingsChange('flickerLights', this.settings.flickerLights);
+            }
+        });
+
+        // Hitmarker toggle
+        this.elements.hitmarkerToggle.addEventListener('change', (e) => {
+            this.settings.hitmarkers = e.target.checked;
+            localStorage.setItem('fps_hitmarkers', this.settings.hitmarkers);
+            if (this.onSettingsChange) {
+                this.onSettingsChange('hitmarkers', this.settings.hitmarkers);
             }
         });
     }

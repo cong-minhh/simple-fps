@@ -56,7 +56,9 @@ class Game {
         this.setupCallbacks();
 
         // Apply initial settings from menu
-        this.arena.applySettings(this.menu.getSettings());
+        const initialSettings = this.menu.getSettings();
+        this.arena.applySettings(initialSettings);
+        this.hud.setHitmarkerEnabled(initialSettings.hitmarkers);
 
         // Connect settings change callback
         this.menu.onSettingsChange = (setting, value) => {
@@ -64,6 +66,8 @@ class Game {
                 this.arena.setParticlesEnabled(value);
             } else if (setting === 'flickerLights') {
                 this.arena.setFlickerEnabled(value);
+            } else if (setting === 'hitmarkers') {
+                this.hud.setHitmarkerEnabled(value);
             }
         };
 
@@ -210,11 +214,12 @@ class Game {
             this.audio.playLand();
         };
 
-        // Player damage audio
+        // Player damage audio & visual
         const origTakeDamage = this.player.takeDamage.bind(this.player);
         this.player.takeDamage = (amount) => {
             origTakeDamage(amount);
             this.audio.playPlayerHurt();
+            this.hud.showDamageFlash();
         };
 
         // Pointer lock

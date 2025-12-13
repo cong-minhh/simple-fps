@@ -15,6 +15,7 @@ const WEAPONS = {
         spread: 0.01,
         adsSpread: 0.002,
         adsZoom: 1.2,
+        adsOffsetY: -0.12, // Baseline (working)
         automatic: false,
         model: { bodySize: [0.08, 0.15, 0.3], barrelSize: [0.05, 0.05, 0.15], color: 0x2a2a2a },
         // Pistol pattern - consistent upward kick
@@ -36,6 +37,7 @@ const WEAPONS = {
         spread: 0.02,
         adsSpread: 0.005,
         adsZoom: 1.5,
+        adsOffsetY: -0.105, // Adjusted for height difference
         automatic: true,
         model: { bodySize: [0.06, 0.12, 0.5], barrelSize: [0.04, 0.04, 0.3], color: 0x1a1a1a },
         // Rifle pattern - like AK-47: up, then left, then right
@@ -61,6 +63,7 @@ const WEAPONS = {
         spread: 0.03,
         adsSpread: 0.015,
         adsZoom: 1.3,
+        adsOffsetY: -0.095, // Adjusted for height difference
         automatic: true,
         model: { bodySize: [0.07, 0.1, 0.35], barrelSize: [0.035, 0.035, 0.12], color: 0x3a3a3a },
         // SMG pattern - fast but more random, moderate climb
@@ -86,6 +89,7 @@ const WEAPONS = {
         spread: 0.08,
         adsSpread: 0.05,
         adsZoom: 1.1,
+        adsOffsetY: -0.105, // Adjusted for height difference
         automatic: false,
         model: { bodySize: [0.08, 0.12, 0.55], barrelSize: [0.06, 0.06, 0.25], color: 0x4a3020 },
         // Shotgun pattern - heavy single kick
@@ -157,7 +161,7 @@ export class Shooting {
         // Gun model
         this.gunModel = null;
         this.defaultGunPos = new THREE.Vector3(0.25, -0.2, -0.4);
-        this.adsGunPos = new THREE.Vector3(0, -0.12, -0.35);
+        this.adsGunPos = new THREE.Vector3(0, this.weapon.adsOffsetY || -0.12, -0.35);
 
         this.setupEventListeners();
         this.createGunModel();
@@ -244,6 +248,9 @@ export class Shooting {
         this.shotsFired = 0;
         this.recoilPitch = 0;
         this.recoilYaw = 0;
+
+        // Update ADS position for new weapon
+        this.adsGunPos.y = this.weapon.adsOffsetY || -0.12;
 
         // Recreate gun model
         if (this.gunModel) {

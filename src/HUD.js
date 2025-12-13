@@ -14,7 +14,10 @@ export class HUD {
             weaponName: document.getElementById('weapon-name'),
             ammoCount: document.getElementById('ammo-count'),
             reloadIndicator: document.getElementById('reload-indicator'),
-            reloadProgress: document.querySelector('#reload-indicator .reload-progress')
+            ammoCount: document.getElementById('ammo-count'),
+            reloadIndicator: document.getElementById('reload-indicator'),
+            reloadProgress: document.querySelector('#reload-indicator .reload-progress'),
+            damageFlash: document.getElementById('damage-flash')
         };
 
         this.startTime = 0;
@@ -24,7 +27,15 @@ export class HUD {
         // Edge indicator settings
         this.indicatorPool = [];
         this.maxIndicators = 10;
+        this.indicatorPool = [];
+        this.maxIndicators = 10;
         this.edgePadding = 50; // Distance from screen edge
+
+        this.hitmarkerEnabled = true;
+    }
+
+    setHitmarkerEnabled(enabled) {
+        this.hitmarkerEnabled = enabled;
     }
 
     updateWeapon(weapon, ammo, isReloading = false) {
@@ -53,11 +64,23 @@ export class HUD {
         });
     }
 
+    showDamageFlash() {
+        const flash = this.elements.damageFlash;
+        if (!flash) return;
+
+        flash.style.opacity = '1';
+        setTimeout(() => {
+            flash.style.opacity = '0';
+        }, 100);
+    }
+
     /**
      * Show hitmarker when hitting an enemy
      * @param {boolean} isHeadshot - Whether this was a headshot
      */
     showHitmarker(isHeadshot = false) {
+        if (!this.hitmarkerEnabled) return;
+
         const hitmarker = this.elements.hitmarker;
 
         // Clear any existing timeout
@@ -120,11 +143,9 @@ export class HUD {
         this.elements.healthText.textContent = Math.ceil(health);
 
         if (percent < 30) {
-            this.elements.healthBar.style.background = 'linear-gradient(90deg, #ff0000, #ff3333)';
-        } else if (percent < 60) {
-            this.elements.healthBar.style.background = 'linear-gradient(90deg, #ff6600, #ff9933)';
+            this.elements.healthBar.style.background = '#ff3333';
         } else {
-            this.elements.healthBar.style.background = 'linear-gradient(90deg, #ff4444, #ff6666)';
+            this.elements.healthBar.style.background = '#ffffff';
         }
     }
 
