@@ -246,30 +246,61 @@ export class Player {
         // Gravity
         this.velocityY -= this.gravity * dt;
 
-        // Position updates with collision
+        // === ROBUST COLLISION WITH SWEPT TESTING AND PUSH-OUT ===
         const pos = this.camera.position;
 
-        // X collision
-        this._testPos.set(pos.x + this.velocityX * dt, pos.y, pos.z);
-        if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
-            pos.x = this._testPos.x;
-        } else {
-            this.velocityX = 0; // Stop momentum on collision
+        // Calculate movement deltas
+        const deltaX = this.velocityX * dt;
+        const deltaY = this.velocityY * dt;
+        const deltaZ = this.velocityZ * dt;
+
+        // Movement step size for sub-stepping (smaller = more accurate but slower)
+        const stepSize = this.playerRadius * 0.5;
+        const totalDist = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+        const steps = Math.max(1, Math.ceil(totalDist / stepSize));
+
+        // Sub-step horizontal movement to prevent tunneling
+        for (let i = 0; i < steps; i++) {
+            const stepFraction = 1 / steps;
+            const stepDeltaX = deltaX * stepFraction;
+            const stepDeltaZ = deltaZ * stepFraction;
+
+            // X collision
+            this._testPos.set(pos.x + stepDeltaX, pos.y, pos.z);
+            if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
+                pos.x = this._testPos.x;
+            } else {
+                this.velocityX = 0;
+                break; // Stop sub-stepping on collision
+            }
+
+            // Z collision
+            this._testPos.set(pos.x, pos.y, pos.z + stepDeltaZ);
+            if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
+                pos.z = this._testPos.z;
+            } else {
+                this.velocityZ = 0;
+                break;
+            }
         }
 
-        // Z collision
-        this._testPos.set(pos.x, pos.y, pos.z + this.velocityZ * dt);
-        if (!this.arena.checkCollision(this._testPos, this.playerRadius)) {
-            pos.z = this._testPos.z;
+        // Y movement with ceiling collision
+        if (deltaY > 0) {
+            // Moving up - check ceiling
+            const ceiling = this.arena.checkCeilingCollision(pos, this.playerRadius, this.playerHeight, deltaY);
+            if (ceiling) {
+                // Hit ceiling, stop upward movement
+                this.velocityY = 0;
+            } else {
+                pos.y += deltaY;
+            }
         } else {
-            this.velocityZ = 0; // Stop momentum on collision
+            // Moving down - just apply gravity
+            pos.y += deltaY;
         }
 
-        // Y movement
-        pos.y += this.velocityY * dt;
-
-        // Ground check
-        const groundY = this.arena.getFloorHeight(pos.x, pos.z) + this.playerHeight;
+        // Ground check with radius consideration
+        const groundY = this.arena.getFloorHeightWithRadius(pos.x, pos.z, this.playerRadius) + this.playerHeight;
         if (pos.y <= groundY) {
             pos.y = groundY;
             // Landing sound
@@ -282,6 +313,14 @@ export class Player {
         } else {
             this.isOnGround = false;
             this.wasInAir = true;
+        }
+
+        // === SAFETY: Push out if somehow stuck inside a collider ===
+        const pushed = this.arena.resolveCollision(pos, this.playerRadius, this.playerHeight);
+        if (pushed) {
+            // Cancel velocity if we had to push out
+            this.velocityX *= 0.5;
+            this.velocityZ *= 0.5;
         }
 
         // Footstep sounds - only when moving on ground

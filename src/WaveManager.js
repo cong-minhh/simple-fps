@@ -109,7 +109,9 @@ export class WaveManager {
     spawnEnemy(type = 'NORMAL') {
         if (this.getAliveCount() >= this.maxEnemies) return false;
 
-        const spawnPos = this.arena.getRandomSpawnPoint();
+        // Use strategic spawn - prefer spawns far from player
+        const playerPos = this.player ? this.player.position : null;
+        const spawnPos = this.arena.getSpawnPointWithMinDistance(playerPos, 8);
         const enemy = new Enemy(this.scene, this.arena, spawnPos, this.pathfinder, type);
 
         if (this.player) {
