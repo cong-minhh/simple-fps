@@ -1,3 +1,4 @@
+
 // Arena.js - Creates the game arena with collision geometry
 import * as THREE from 'three';
 

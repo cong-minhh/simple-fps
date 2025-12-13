@@ -308,7 +308,10 @@ export class Enemy {
 
         const playerPos = this.player.getPosition();
         const myPos = this.mesh.position;
-        const distanceToPlayer = myPos.distanceTo(playerPos);
+        // Use 2D distance for gameplay logic to ignore height differences
+        const dx = myPos.x - playerPos.x;
+        const dz = myPos.z - playerPos.z;
+        const distanceToPlayer = Math.sqrt(dx * dx + dz * dz);
         const healthPercent = this.health / this.maxHealth;
 
         // Update timers
@@ -421,12 +424,13 @@ export class Enemy {
 
         // Update health bar to face camera
         if (this.healthBar) {
-            this.healthBar.parent.lookAt(playerPos.x, myPos.y + 1.8, playerPos.z);
+            // Fix: Rotate only the health bar, not the entire enemy group
+            this.healthBar.lookAt(playerPos.x, playerPos.y, playerPos.z);
         }
 
         // Update health bar scale
         this.healthBar.scale.x = healthPercent;
-        this.healthBar.position.x = (1 - healthPercent) * -0.29;
+        this.healthBar.position.x = (1 - healthPercent) * -0.29; // Center the scaling
 
         // Change health bar color based on health
         if (healthPercent < 0.3) {
@@ -465,31 +469,43 @@ export class Enemy {
         // Use ground level (y=1) for collision check - enemies are at floor level
         const checkY = 1;
 
-        // First try moving both axes together
-        this._tempVec.set(pos.x + dx, checkY, pos.z + dz);
-        if (!this.arena.checkCollision(this._tempVec, radius)) {
-            pos.x += dx;
-            pos.z += dz;
-            moved = true;
-        } else {
-            // Try X movement separately
-            this._tempVec.set(pos.x + dx, checkY, pos.z);
-            if (!this.arena.checkCollision(this._tempVec, radius)) {
-                pos.x += dx;
-                moved = true;
-            }
+        // Sub-stepping for high speed/low FPS stability
+        const steps = Math.ceil(this.speed * deltaTime / (this.collisionRadius * 0.5));
+        const stepDx = dx / steps;
+        const stepDz = dz / steps;
 
-            // Try Z movement separately
-            this._tempVec.set(pos.x, checkY, pos.z + dz);
+        for (let i = 0; i < steps; i++) {
+            // First try moving both axes together
+            this._tempVec.set(pos.x + stepDx, checkY, pos.z + stepDz);
             if (!this.arena.checkCollision(this._tempVec, radius)) {
-                pos.z += dz;
+                pos.x += stepDx;
+                pos.z += stepDz;
                 moved = true;
+            } else {
+                // Try X movement separately
+                this._tempVec.set(pos.x + stepDx, checkY, pos.z);
+                let movedX = false;
+                if (!this.arena.checkCollision(this._tempVec, radius)) {
+                    pos.x += stepDx;
+                    moved = true;
+                    movedX = true;
+                }
+
+                // Try Z movement separately
+                this._tempVec.set(pos.x, checkY, pos.z + stepDz);
+                if (!this.arena.checkCollision(this._tempVec, radius)) {
+                    pos.z += stepDz;
+                    moved = true;
+                } else if (!movedX) {
+                    // Blocked on both - stop this sub-step
+                    break;
+                }
             }
         }
 
         // Stuck detection - if not moving much, try to recover
         const distMoved = pos.distanceTo(this.lastPosition);
-        if (distMoved < 0.01) {
+        if (distMoved < 0.01 * deltaTime) { // Adjusted threshold for time
             this.stuckTimer += deltaTime;
 
             if (this.stuckTimer > this.stuckThreshold) {
