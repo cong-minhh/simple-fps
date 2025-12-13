@@ -41,10 +41,31 @@ class Game {
         this.waveManager.setPlayer(this.player);
         this.waveManager.setShooting(this.shooting);
         this.waveManager.initPathfinding(); // Initialize A* pathfinding
+        this.waveManager.initProjectiles(this.scene); // Initialize enemy projectile system
         this.shooting.setPlayer(this.player); // For crouch recoil reduction
+
+        // Connect projectile manager to player for hit detection
+        if (this.waveManager.projectileManager) {
+            this.waveManager.projectileManager.setPlayer(this.player);
+            this.waveManager.projectileManager.onHitPlayer = (damage) => {
+                this.player.takeDamage(damage);
+            };
+        }
 
         // Set up callbacks
         this.setupCallbacks();
+
+        // Apply initial settings from menu
+        this.arena.applySettings(this.menu.getSettings());
+
+        // Connect settings change callback
+        this.menu.onSettingsChange = (setting, value) => {
+            if (setting === 'particles') {
+                this.arena.setParticlesEnabled(value);
+            } else if (setting === 'flickerLights') {
+                this.arena.setFlickerEnabled(value);
+            }
+        };
 
         // Add damage flash element
         this.createDamageFlash();
@@ -263,6 +284,12 @@ class Game {
             if (this.player.isDead) {
                 this.gameOver();
             } else {
+                // Update arena environment (particles, lights, hazards)
+                const arenaResult = this.arena.update(dt, this.player.getPosition());
+                if (arenaResult.hazardDamage > 0) {
+                    this.player.takeDamage(arenaResult.hazardDamage);
+                }
+
                 this.waveManager.update(dt);
 
                 // Update enemy direction indicators every frame for smooth tracking

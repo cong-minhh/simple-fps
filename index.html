@@ -74,7 +74,30 @@
       RIGHT CLICK - Aim (ADS)
     </p>
     <button id="start-btn">CLICK TO PLAY</button>
+    <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
     <p id="high-score">High Score: 0</p>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel" class="menu hidden">
+    <h1>⚙ SETTINGS</h1>
+    <div class="settings-content">
+      <div class="setting-row">
+        <label for="particles-toggle">Particles</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="particles-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <label for="flicker-toggle">Flickering Lights</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="flicker-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <button id="settings-back-btn">BACK</button>
   </div>
 
   <!-- Game Over Menu -->

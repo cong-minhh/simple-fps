@@ -6,9 +6,11 @@ const STATES = {
     PATROL: 'PATROL',
     CHASE: 'CHASE',
     ATTACK: 'ATTACK',
+    ATTACK_RANGED: 'ATTACK_RANGED',
     STRAFE: 'STRAFE',
     RETREAT: 'RETREAT',
     FLANK: 'FLANK',
+    LEAP: 'LEAP',
     IDLE: 'IDLE'
 };
 
@@ -56,7 +58,25 @@ const ENEMY_TYPES = {
         attackRange: 2,
         bodyColor: 0xff44ff,
         headColor: 0xffaaff,
-        scale: 1.1
+        scale: 1.1,
+        canLeap: true, // Berserkers can leap attack
+        leapDamage: 25,
+        leapCooldown: 4
+    },
+    SNIPER: {
+        name: 'Sniper',
+        health: [35, 50],
+        speed: 1.8,
+        damage: 20,
+        attackCooldown: 2.5,
+        attackRange: 15, // Very long range
+        preferredRange: 10, // Tries to stay at this distance
+        bodyColor: 0x888888,
+        headColor: 0xcccccc,
+        scale: 0.95,
+        isRanged: true,
+        projectileSpeed: 25,
+        aimTime: 1.5 // Charge time before shooting
     }
 };
 
@@ -84,6 +104,23 @@ export class Enemy {
         this.bodyColor = config.bodyColor;
         this.headColor = config.headColor;
         this.scale = config.scale;
+
+        // Ranged attack properties
+        this.isRanged = config.isRanged || false;
+        this.projectileSpeed = config.projectileSpeed || 15;
+        this.preferredRange = config.preferredRange || this.attackRange;
+        this.aimTime = config.aimTime || 0;
+        this.currentAimTime = 0;
+        this.isAiming = false;
+        this.projectileManager = null; // Set by WaveManager
+
+        // Leap attack properties (Berserker)
+        this.canLeap = config.canLeap || false;
+        this.leapDamage = config.leapDamage || this.attackDamage;
+        this.leapCooldown = config.leapCooldown || 3;
+        this.lastLeapTime = 0;
+        this.leapVelocity = new THREE.Vector3();
+        this.isLeaping = false;
 
         // State
         this.state = STATES.PATROL;
@@ -119,6 +156,11 @@ export class Enemy {
         this.mesh.position.copy(position);
         this.mesh.userData.enemy = this;
         scene.add(this.mesh);
+
+        // Create laser sight for SNIPER (visible when aiming)
+        if (type === 'SNIPER') {
+            this.createLaserSight();
+        }
 
         // Reference to player (set by game)
         this.player = null;
@@ -277,8 +319,13 @@ export class Enemy {
         switch (this.state) {
             case STATES.PATROL:
                 if (distanceToPlayer < this.detectionRange) {
-                    this.state = STATES.CHASE;
-                    this.requestPath(playerPos);
+                    // Ranged enemies prefer to shoot from distance
+                    if (this.isRanged && distanceToPlayer < this.preferredRange * 1.5) {
+                        this.state = STATES.ATTACK_RANGED;
+                    } else {
+                        this.state = STATES.CHASE;
+                        this.requestPath(playerPos);
+                    }
                 } else {
                     this.patrol(deltaTime);
                 }
@@ -288,8 +335,20 @@ export class Enemy {
                 // Check for retreat condition (low health)
                 if (healthPercent < this.retreatThreshold && Math.random() < 0.3) {
                     this.state = STATES.RETREAT;
+                } else if (this.isRanged && distanceToPlayer <= this.attackRange) {
+                    // Ranged enemies switch to shooting
+                    this.state = STATES.ATTACK_RANGED;
+                } else if (this.canLeap && distanceToPlayer > 3 && distanceToPlayer < 8) {
+                    // Berserker leap opportunity
+                    const currentTime = performance.now() / 1000;
+                    if (currentTime - this.lastLeapTime > this.leapCooldown) {
+                        this.state = STATES.LEAP;
+                        this.startLeap(playerPos);
+                    } else {
+                        this.chase(deltaTime, playerPos);
+                    }
                 } else if (distanceToPlayer < this.attackRange) {
-                    this.state = STATES.STRAFE; // Strafe while attacking
+                    this.state = STATES.STRAFE; // Strafe while attacking (melee)
                 } else if (distanceToPlayer > this.detectionRange * 1.5) {
                     this.state = STATES.PATROL;
                     this.currentWaypoint = this.arena.getRandomWaypoint();
@@ -297,6 +356,28 @@ export class Enemy {
                 } else {
                     this.chase(deltaTime, playerPos);
                 }
+                break;
+
+            case STATES.ATTACK_RANGED:
+                // Ranged attack behavior with aiming
+                if (distanceToPlayer > this.attackRange * 1.2) {
+                    this.state = STATES.CHASE;
+                    this.isAiming = false;
+                    this.currentAimTime = 0;
+                    this.updateLaserSight(false);
+                } else if (distanceToPlayer < this.preferredRange * 0.5 && this.preferredRange > 3) {
+                    // Too close - retreat for ranged enemies
+                    this.state = STATES.RETREAT;
+                    this.isAiming = false;
+                    this.updateLaserSight(false);
+                } else {
+                    this.rangedAttack(deltaTime, playerPos);
+                }
+                break;
+
+            case STATES.LEAP:
+                // Execute leap attack
+                this.updateLeap(deltaTime, playerPos);
                 break;
 
             case STATES.STRAFE:
@@ -566,7 +647,7 @@ export class Enemy {
         if (this.strafeTimer > this.strafeDuration) {
             this.strafeDirection *= -1;
             this.strafeTimer = 0;
-            this.strafeDuration = 1 + Math.random();
+            this.strafeDuration = 0.5 + Math.random() * 1.5; // Variable 0.5-2s
         }
 
         // Calculate strafe direction (perpendicular to player)
@@ -579,10 +660,25 @@ export class Enemy {
         const strafeX = toPlayer.z * this.strafeDirection;
         const strafeZ = -toPlayer.x * this.strafeDirection;
 
-        // Move sideways with robust collision
-        const strafeSpeed = this.speed * 0.6;
-        const dx = strafeX * strafeSpeed * deltaTime;
-        const dz = strafeZ * strafeSpeed * deltaTime;
+        // Variable strafe speed based on type
+        let speedMult = 0.6;
+        if (this.type === 'RUNNER') speedMult = 0.9; // Fast strafe
+        if (this.type === 'TANK') speedMult = 0.3; // Slow but steady
+        if (this.type === 'BERSERKER') speedMult = 0.7 + Math.sin(this.strafeTimer * 8) * 0.2; // Erratic
+
+        const strafeSpeed = this.speed * speedMult;
+        let dx = strafeX * strafeSpeed * deltaTime;
+        let dz = strafeZ * strafeSpeed * deltaTime;
+
+        // Dodge mechanic - random quick side-step (more frequent for aggressive types)
+        const dodgeChance = this.type === 'BERSERKER' ? 0.02 :
+            this.type === 'RUNNER' ? 0.015 : 0.005;
+        if (Math.random() < dodgeChance) {
+            // Quick dodge burst
+            dx *= 3;
+            dz *= 3;
+            this.strafeDirection *= -1; // Flip direction after dodge
+        }
 
         if (!this.tryMove(dx, dz, deltaTime)) {
             // Couldn't move, reverse strafe direction
@@ -716,10 +812,183 @@ export class Enemy {
 
     dispose() {
         this.scene.remove(this.mesh);
+        if (this.laserLine) {
+            this.scene.remove(this.laserLine);
+        }
         this.mesh.traverse(obj => {
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) obj.material.dispose();
         });
+    }
+
+    // === NEW COMBAT METHODS ===
+
+    setProjectileManager(manager) {
+        this.projectileManager = manager;
+    }
+
+    createLaserSight() {
+        // Laser sight line for SNIPER enemies
+        const laserMat = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.6,
+            linewidth: 2
+        });
+        const points = [new THREE.Vector3(), new THREE.Vector3()];
+        const laserGeo = new THREE.BufferGeometry().setFromPoints(points);
+        this.laserLine = new THREE.Line(laserGeo, laserMat);
+        this.laserLine.visible = false;
+        this.scene.add(this.laserLine);
+    }
+
+    updateLaserSight(visible, targetPos = null) {
+        if (!this.laserLine) return;
+
+        this.laserLine.visible = visible;
+        if (visible && targetPos) {
+            const positions = this.laserLine.geometry.attributes.position.array;
+            const myPos = this.mesh.position;
+            // Start from enemy head height
+            positions[0] = myPos.x;
+            positions[1] = myPos.y + 1.4 * this.scale;
+            positions[2] = myPos.z;
+            // End at player position
+            positions[3] = targetPos.x;
+            positions[4] = targetPos.y;
+            positions[5] = targetPos.z;
+            this.laserLine.geometry.attributes.position.needsUpdate = true;
+
+            // Pulse opacity based on aim progress
+            this.laserLine.material.opacity = 0.3 + (this.currentAimTime / this.aimTime) * 0.5;
+        }
+    }
+
+    rangedAttack(deltaTime, playerPos) {
+        if (!this.projectileManager) return;
+
+        const currentTime = performance.now() / 1000;
+        const timeSinceLastAttack = currentTime - this.lastAttackTime;
+
+        // Face the player while aiming
+        this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
+
+        // Start aiming
+        if (!this.isAiming && timeSinceLastAttack >= this.attackCooldown) {
+            this.isAiming = true;
+            this.currentAimTime = 0;
+        }
+
+        // Update aim
+        if (this.isAiming) {
+            this.currentAimTime += deltaTime;
+            this.updateLaserSight(true, playerPos);
+
+            // Fire when aim complete
+            if (this.currentAimTime >= this.aimTime) {
+                const myPos = this.mesh.position;
+                const origin = this._tempVec.set(
+                    myPos.x,
+                    myPos.y + 1.2 * this.scale,
+                    myPos.z
+                );
+
+                // Fire projectile
+                this.projectileManager.fire(
+                    origin,
+                    playerPos,
+                    this.attackDamage,
+                    this.projectileSpeed
+                );
+
+                this.lastAttackTime = currentTime;
+                this.isAiming = false;
+                this.currentAimTime = 0;
+                this.updateLaserSight(false);
+
+                // Shoot animation
+                this.animateAttack();
+            }
+        }
+
+        // Light strafe while shooting
+        const strafeSpeed = this.speed * 0.3;
+        const toPlayer = this._moveDir;
+        toPlayer.subVectors(playerPos, this.mesh.position);
+        toPlayer.y = 0;
+        toPlayer.normalize();
+
+        const perpX = toPlayer.z * this.strafeDirection;
+        const perpZ = -toPlayer.x * this.strafeDirection;
+
+        this.tryMove(perpX * strafeSpeed * deltaTime, perpZ * strafeSpeed * deltaTime, deltaTime);
+
+        // Occasionally change strafe direction
+        this.strafeTimer += deltaTime;
+        if (this.strafeTimer > this.strafeDuration) {
+            this.strafeDirection *= -1;
+            this.strafeTimer = 0;
+        }
+    }
+
+    startLeap(targetPos) {
+        this.isLeaping = true;
+        this.lastLeapTime = performance.now() / 1000;
+
+        // Calculate leap velocity - arc toward player
+        const myPos = this.mesh.position;
+        const dx = targetPos.x - myPos.x;
+        const dz = targetPos.z - myPos.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+
+        // Horizontal velocity
+        const leapSpeed = 12;
+        this.leapVelocity.x = (dx / distance) * leapSpeed;
+        this.leapVelocity.z = (dz / distance) * leapSpeed;
+        // Vertical arc
+        this.leapVelocity.y = 6;
+    }
+
+    updateLeap(deltaTime, playerPos) {
+        if (!this.isLeaping) {
+            this.state = STATES.CHASE;
+            return;
+        }
+
+        const myPos = this.mesh.position;
+
+        // Apply gravity
+        this.leapVelocity.y -= 15 * deltaTime;
+
+        // Move
+        myPos.x += this.leapVelocity.x * deltaTime;
+        myPos.y += this.leapVelocity.y * deltaTime;
+        myPos.z += this.leapVelocity.z * deltaTime;
+
+        // Face player during leap
+        this.mesh.lookAt(playerPos.x, myPos.y, playerPos.z);
+
+        // Check for landing
+        const floorHeight = this.arena.getFloorHeight(myPos.x, myPos.z);
+        if (myPos.y <= floorHeight) {
+            myPos.y = floorHeight;
+            this.isLeaping = false;
+
+            // Deal damage if close to player on landing
+            const distToPlayer = myPos.distanceTo(playerPos);
+            if (distToPlayer < 2.5 && this.player && !this.player.isDead) {
+                this.player.takeDamage(this.leapDamage);
+
+                // Impact animation
+                this.mesh.scale.setScalar(1.3);
+                setTimeout(() => {
+                    if (this.mesh) this.mesh.scale.setScalar(this.scale);
+                }, 150);
+            }
+
+            // Return to chase state
+            this.state = STATES.CHASE;
+        }
     }
 
     getMesh() {

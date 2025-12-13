@@ -8,15 +8,30 @@ export class Arena {
         this.spawnPoints = [];
         this.waypoints = [];
 
+        // Performance: Pool arrays for dynamic elements
+        this.flickeringLights = [];
+        this.explosiveBarrels = [];
+        this.hazardZones = [];
+        this.particles = null; // Single instanced particle system
+
+        // Pre-allocate reusable objects for update loop
+        this._tempVec = new THREE.Vector3();
+
+        // Settings flags
+        this.flickerEnabled = true;
+
         this.createSkybox();
         this.createFloor();
         this.createWalls();
         this.createCrates();
         this.createBarrels();
+        this.createExplosiveBarrels();
         this.createPlatforms();
         this.createRamp();
         this.createPillars();
+        this.createHazardZones();
         this.createBoundaryWalls();
+        this.createAtmosphericParticles();
         this.setupWaypoints();
         this.setupSpawnPoints();
         this.addAtmosphere();
@@ -41,7 +56,7 @@ export class Arena {
         const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
         this.scene.add(ambientLight);
 
-        // Colored point lights for atmosphere
+        // Colored flickering point lights for industrial atmosphere
         const lightColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffaa00];
         const lightPositions = [[-8, 3, -8], [8, 3, -8], [-8, 3, 8], [8, 3, 8]];
 
@@ -49,6 +64,29 @@ export class Arena {
             const light = new THREE.PointLight(lightColors[i], 0.3, 15);
             light.position.set(...pos);
             this.scene.add(light);
+
+            // Add to flickering lights for animation
+            this.flickeringLights.push({
+                light: light,
+                baseIntensity: 0.3,
+                flickerSpeed: 3 + Math.random() * 4, // 3-7 Hz flicker
+                phase: Math.random() * Math.PI * 2  // Random start phase
+            });
+        });
+
+        // Add extra warning lights near hazards
+        const warningPositions = [[-8, 2, 0], [8, 2, 0], [0, 2, -9]];
+        warningPositions.forEach(pos => {
+            const light = new THREE.PointLight(0xff0000, 0.4, 6);
+            light.position.set(...pos);
+            this.scene.add(light);
+
+            this.flickeringLights.push({
+                light: light,
+                baseIntensity: 0.4,
+                flickerSpeed: 8 + Math.random() * 4, // Fast warning flicker
+                phase: Math.random() * Math.PI * 2
+            });
         });
     }
 
@@ -447,5 +485,321 @@ export class Arena {
             }
         }
         return highestFloor;
+    }
+
+    // === NEW ENVIRONMENT FEATURES (Performance Optimized) ===
+
+    createExplosiveBarrels() {
+        // Shared geometry and material (instancing-friendly)
+        const barrelGeo = new THREE.CylinderGeometry(0.35, 0.4, 1.0, 8);
+        const barrelMat = new THREE.MeshStandardMaterial({
+            color: 0x8b0000,
+            roughness: 0.4,
+            metalness: 0.6,
+            emissive: 0xff2200,
+            emissiveIntensity: 0.15
+        });
+
+        const hazardMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const hazardGeo = new THREE.BoxGeometry(0.25, 0.08, 0.02);
+
+        const positions = [
+            [-4, 0.5, 4], [4, 0.5, -4], [0, 0.5, 8], [-7, 0.5, -2]
+        ];
+
+        positions.forEach(pos => {
+            const barrel = new THREE.Mesh(barrelGeo, barrelMat.clone());
+            barrel.position.set(pos[0], pos[1], pos[2]);
+            barrel.castShadow = true;
+            barrel.userData.isExplosive = true;
+            barrel.userData.health = 30;
+            this.scene.add(barrel);
+
+            // Hazard stripe (single mesh)
+            const stripe = new THREE.Mesh(hazardGeo, hazardMat);
+            stripe.position.set(pos[0], pos[1] + 0.2, pos[2] + 0.36);
+            this.scene.add(stripe);
+
+            // Glow light (low intensity, no shadows)
+            const glow = new THREE.PointLight(0xff4400, 0.3, 4);
+            glow.position.set(pos[0], pos[1] + 0.8, pos[2]);
+            this.scene.add(glow);
+
+            this.explosiveBarrels.push({
+                mesh: barrel,
+                light: glow,
+                position: new THREE.Vector3(pos[0], pos[1], pos[2]),
+                health: 30,
+                isExploded: false
+            });
+
+            // Add thin collider
+            this.colliders.push({
+                min: new THREE.Vector3(pos[0] - 0.4, 0, pos[2] - 0.4),
+                max: new THREE.Vector3(pos[0] + 0.4, 1.0, pos[2] + 0.4),
+                isExplosive: true,
+                barrelIndex: this.explosiveBarrels.length - 1
+            });
+        });
+    }
+
+    createHazardZones() {
+        // Toxic floor zones - use single shared material
+        const hazardMat = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+
+        const zones = [
+            { pos: [-8, 0.02, 0], size: [2, 3], damage: 5 },
+            { pos: [8, 0.02, 0], size: [2, 3], damage: 5 },
+            { pos: [0, 0.02, -9], size: [3, 2], damage: 8 }
+        ];
+
+        zones.forEach(zone => {
+            const geo = new THREE.PlaneGeometry(zone.size[0], zone.size[1]);
+            const mesh = new THREE.Mesh(geo, hazardMat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.set(zone.pos[0], zone.pos[1], zone.pos[2]);
+            this.scene.add(mesh);
+
+            // Bubbling particles effect using point sprite
+            const bubbleGeo = new THREE.BufferGeometry();
+            const bubbleCount = 8;
+            const positions = new Float32Array(bubbleCount * 3);
+            for (let i = 0; i < bubbleCount; i++) {
+                positions[i * 3] = zone.pos[0] + (Math.random() - 0.5) * zone.size[0];
+                positions[i * 3 + 1] = 0.1 + Math.random() * 0.3;
+                positions[i * 3 + 2] = zone.pos[2] + (Math.random() - 0.5) * zone.size[1];
+            }
+            bubbleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const bubbleMat = new THREE.PointsMaterial({
+                color: 0x44ff44,
+                size: 0.15,
+                transparent: true,
+                opacity: 0.6
+            });
+            const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
+            this.scene.add(bubbles);
+
+            this.hazardZones.push({
+                mesh,
+                bubbles,
+                bounds: {
+                    minX: zone.pos[0] - zone.size[0] / 2,
+                    maxX: zone.pos[0] + zone.size[0] / 2,
+                    minZ: zone.pos[2] - zone.size[1] / 2,
+                    maxZ: zone.pos[2] + zone.size[1] / 2
+                },
+                damage: zone.damage,
+                lastDamageTime: 0
+            });
+        });
+    }
+
+    createAtmosphericParticles() {
+        // Single instanced particle system for dust/embers (one draw call)
+        const particleCount = 100;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Spread across arena
+            positions[i * 3] = (Math.random() - 0.5) * 20;
+            positions[i * 3 + 1] = Math.random() * 5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 20;
+
+            // Slow drift velocities (stored for update)
+            velocities[i * 3] = (Math.random() - 0.5) * 0.2;
+            velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
+
+            // Warm ember colors
+            const brightness = 0.5 + Math.random() * 0.5;
+            colors[i * 3] = brightness;
+            colors[i * 3 + 1] = brightness * 0.4;
+            colors[i * 3 + 2] = brightness * 0.1;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.08,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.particles.userData.velocities = velocities;
+        this.scene.add(this.particles);
+    }
+
+    // Call this in game loop - highly optimized (no allocations)
+    update(deltaTime, playerPos = null) {
+        const time = performance.now() * 0.001;
+
+        // Update flickering lights (cheap - just intensity changes)
+        if (this.flickerEnabled) {
+            for (let i = 0; i < this.flickeringLights.length; i++) {
+                const fl = this.flickeringLights[i];
+                // Fast flicker using sin + noise approximation
+                fl.light.intensity = fl.baseIntensity * (0.7 + 0.3 * Math.sin(time * fl.flickerSpeed + fl.phase));
+            }
+        }
+
+        // Update atmospheric particles (single buffer update)
+        if (this.particles) {
+            const positions = this.particles.geometry.attributes.position.array;
+            const velocities = this.particles.userData.velocities;
+            const count = positions.length / 3;
+
+            for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                positions[i3] += velocities[i3] * deltaTime;
+                positions[i3 + 1] += velocities[i3 + 1] * deltaTime;
+                positions[i3 + 2] += velocities[i3 + 2] * deltaTime;
+
+                // Wrap particles to stay in arena (no conditionals where possible)
+                if (positions[i3] > 10) positions[i3] = -10;
+                if (positions[i3] < -10) positions[i3] = 10;
+                if (positions[i3 + 1] > 5) positions[i3 + 1] = 0;
+                if (positions[i3 + 1] < 0) positions[i3 + 1] = 5;
+                if (positions[i3 + 2] > 10) positions[i3 + 2] = -10;
+                if (positions[i3 + 2] < -10) positions[i3 + 2] = 10;
+            }
+            this.particles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // Update hazard zone bubbles (simple Y oscillation)
+        for (let i = 0; i < this.hazardZones.length; i++) {
+            const hz = this.hazardZones[i];
+            const positions = hz.bubbles.geometry.attributes.position.array;
+            const count = positions.length / 3;
+            for (let j = 0; j < count; j++) {
+                positions[j * 3 + 1] = 0.1 + Math.abs(Math.sin(time * 2 + j)) * 0.4;
+            }
+            hz.bubbles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // Check player in hazard zones (if playerPos provided)
+        let hazardDamage = 0;
+        if (playerPos) {
+            for (let i = 0; i < this.hazardZones.length; i++) {
+                const hz = this.hazardZones[i];
+                if (playerPos.x >= hz.bounds.minX && playerPos.x <= hz.bounds.maxX &&
+                    playerPos.z >= hz.bounds.minZ && playerPos.z <= hz.bounds.maxZ) {
+                    if (time - hz.lastDamageTime > 0.5) { // Damage every 0.5s
+                        hazardDamage += hz.damage;
+                        hz.lastDamageTime = time;
+                    }
+                }
+            }
+        }
+
+        return { hazardDamage };
+    }
+
+    // Explode a barrel at given index
+    explodeBarrel(barrelIndex, onExplosion = null) {
+        const barrel = this.explosiveBarrels[barrelIndex];
+        if (!barrel || barrel.isExploded) return null;
+
+        barrel.isExploded = true;
+        const pos = barrel.position;
+
+        // Visual explosion effect
+        const explosionGeo = new THREE.SphereGeometry(0.5, 8, 8);
+        const explosionMat = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 1
+        });
+        const explosion = new THREE.Mesh(explosionGeo, explosionMat);
+        explosion.position.copy(pos);
+        this.scene.add(explosion);
+
+        // Animate explosion (no interval - use requestAnimationFrame pattern)
+        const startTime = performance.now();
+        const animate = () => {
+            const elapsed = (performance.now() - startTime) / 1000;
+            if (elapsed < 0.5) {
+                const scale = 1 + elapsed * 8;
+                explosion.scale.setScalar(scale);
+                explosion.material.opacity = 1 - elapsed * 2;
+                requestAnimationFrame(animate);
+            } else {
+                this.scene.remove(explosion);
+                explosionGeo.dispose();
+                explosionMat.dispose();
+            }
+        };
+        animate();
+
+        // Remove barrel mesh
+        this.scene.remove(barrel.mesh);
+        this.scene.remove(barrel.light);
+
+        // Return explosion data for damage calculation
+        return {
+            position: pos.clone(),
+            radius: 4,
+            damage: 50
+        };
+    }
+
+    // Check if position is near explosive barrel, return barrel index or -1
+    getExplosiveBarrelNear(position, radius = 1) {
+        for (let i = 0; i < this.explosiveBarrels.length; i++) {
+            const barrel = this.explosiveBarrels[i];
+            if (barrel.isExploded) continue;
+            const dist = position.distanceTo(barrel.position);
+            if (dist < radius) return i;
+        }
+        return -1;
+    }
+
+    // Damage a barrel, returns explosion data if destroyed
+    damageBarrel(barrelIndex, damage) {
+        const barrel = this.explosiveBarrels[barrelIndex];
+        if (!barrel || barrel.isExploded) return null;
+
+        barrel.health -= damage;
+        if (barrel.health <= 0) {
+            return this.explodeBarrel(barrelIndex);
+        }
+        return null;
+    }
+
+    // === SETTINGS TOGGLE METHODS ===
+
+    setParticlesEnabled(enabled) {
+        if (this.particles) {
+            this.particles.visible = enabled;
+        }
+    }
+
+    setFlickerEnabled(enabled) {
+        this.flickerEnabled = enabled;
+        // If disabled, reset all lights to base intensity
+        if (!enabled) {
+            for (let i = 0; i < this.flickeringLights.length; i++) {
+                const fl = this.flickeringLights[i];
+                fl.light.intensity = fl.baseIntensity;
+            }
+        }
+    }
+
+    applySettings(settings) {
+        this.setParticlesEnabled(settings.particles);
+        this.setFlickerEnabled(settings.flickerLights);
     }
 }

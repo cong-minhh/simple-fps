@@ -1,6 +1,7 @@
 // WaveManager.js - Enhanced wave spawning with variety and fast pacing
 import { Enemy, ENEMY_TYPES } from './Enemy.js';
 import { Pathfinding } from './Pathfinding.js';
+import { EnemyProjectileManager } from './EnemyProjectile.js';
 
 // Wave configuration - what spawns when
 const WAVE_CONFIG = [
@@ -14,16 +15,16 @@ const WAVE_CONFIG = [
     { enemies: ['TANK', 'NORMAL', 'NORMAL', 'RUNNER'], spawnDelay: 350 },
     // Wave 5: Mixed
     { enemies: ['NORMAL', 'NORMAL', 'RUNNER', 'RUNNER', 'RUNNER'], spawnDelay: 300 },
-    // Wave 6: Berserkers
+    // Wave 6: Berserkers - they can leap now!
     { enemies: ['BERSERKER', 'BERSERKER', 'NORMAL', 'RUNNER'], spawnDelay: 300 },
-    // Wave 7: Heavy
-    { enemies: ['TANK', 'TANK', 'NORMAL', 'NORMAL', 'RUNNER'], spawnDelay: 250 },
+    // Wave 7: Introduce SNIPER
+    { enemies: ['SNIPER', 'TANK', 'NORMAL', 'NORMAL', 'RUNNER'], spawnDelay: 250 },
     // Wave 8: Swarm
     { enemies: ['RUNNER', 'RUNNER', 'RUNNER', 'RUNNER', 'RUNNER', 'BERSERKER'], spawnDelay: 200 },
-    // Wave 9: Elite mix
-    { enemies: ['TANK', 'BERSERKER', 'BERSERKER', 'RUNNER', 'RUNNER', 'NORMAL'], spawnDelay: 200 },
+    // Wave 9: Elite mix with snipers
+    { enemies: ['SNIPER', 'SNIPER', 'TANK', 'BERSERKER', 'RUNNER', 'RUNNER'], spawnDelay: 200 },
     // Wave 10: Boss wave
-    { enemies: ['TANK', 'TANK', 'TANK', 'BERSERKER', 'BERSERKER', 'RUNNER', 'RUNNER'], spawnDelay: 150 },
+    { enemies: ['TANK', 'TANK', 'SNIPER', 'SNIPER', 'BERSERKER', 'BERSERKER', 'RUNNER'], spawnDelay: 150 },
 ];
 
 export class WaveManager {
@@ -54,6 +55,7 @@ export class WaveManager {
         this.player = null;
         this.shooting = null;
         this.pathfinder = null;
+        this.projectileManager = null; // Enemy projectile system
 
         // Callbacks
         this.onEnemyKilled = null;
@@ -62,6 +64,10 @@ export class WaveManager {
 
     initPathfinding() {
         this.pathfinder = new Pathfinding(this.arena, 0.5);
+    }
+
+    initProjectiles(scene) {
+        this.projectileManager = new EnemyProjectileManager(scene);
     }
 
     setPlayer(player) {
@@ -110,6 +116,11 @@ export class WaveManager {
             enemy.setPlayer(this.player);
         }
 
+        // Connect projectile manager for ranged enemies
+        if (this.projectileManager) {
+            enemy.setProjectileManager(this.projectileManager);
+        }
+
         this.enemies.push(enemy);
         this.updateShootingTargets();
         return true;
@@ -142,11 +153,49 @@ export class WaveManager {
 
     update(deltaTime) {
         const currentTime = performance.now();
+        const aliveEnemies = this.enemies.filter(e => !e.isDead);
 
         // Update all enemies
         this.enemies.forEach(enemy => {
             enemy.update(deltaTime);
         });
+
+        // Group spread - push enemies apart if too close (prevents clustering)
+        const spreadRadius = 1.5;
+        const spreadRadiusSq = spreadRadius * spreadRadius;
+        const spreadForce = 2;
+
+        for (let i = 0; i < aliveEnemies.length; i++) {
+            const a = aliveEnemies[i];
+            const posA = a.mesh.position;
+
+            for (let j = i + 1; j < aliveEnemies.length; j++) {
+                const b = aliveEnemies[j];
+                const posB = b.mesh.position;
+
+                const dx = posA.x - posB.x;
+                const dz = posA.z - posB.z;
+                const distSq = dx * dx + dz * dz;
+
+                if (distSq < spreadRadiusSq && distSq > 0.01) {
+                    const dist = Math.sqrt(distSq);
+                    const overlap = spreadRadius - dist;
+                    const pushX = (dx / dist) * overlap * spreadForce * deltaTime;
+                    const pushZ = (dz / dist) * overlap * spreadForce * deltaTime;
+
+                    // Push both enemies apart
+                    posA.x += pushX * 0.5;
+                    posA.z += pushZ * 0.5;
+                    posB.x -= pushX * 0.5;
+                    posB.z -= pushZ * 0.5;
+                }
+            }
+        }
+
+        // Update enemy projectiles
+        if (this.projectileManager) {
+            this.projectileManager.update(deltaTime);
+        }
 
         // Spawn queued enemies with delay
         if (this.waveEnemyQueue.length > 0) {
