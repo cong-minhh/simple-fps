@@ -95,11 +95,11 @@ export class Pathfinding {
 
     /**
      * Find nearest walkable cell to given grid coordinates
-     * Uses expanding square search
+     * Uses expanding square search with larger radius
      */
     findNearestWalkable(gx, gz) {
-        // Check up to 5 cells away
-        for (let dist = 1; dist <= 5; dist++) {
+        // Check up to 15 cells away (increased from 5 for better coverage)
+        for (let dist = 1; dist <= 15; dist++) {
             for (let dx = -dist; dx <= dist; dx++) {
                 for (let dz = -dist; dz <= dist; dz++) {
                     // Only check cells at this distance (perimeter)
@@ -167,7 +167,7 @@ export class Pathfinding {
         ];
 
         let iterations = 0;
-        const maxIterations = 1000; // Safety limit
+        const maxIterations = 2000; // Increased for better path coverage
 
         while (this._openSet.length > 0 && iterations < maxIterations) {
             iterations++;
@@ -228,8 +228,14 @@ export class Pathfinding {
             }
         }
 
-        // No path found
-        return null;
+        // No path found - return a fallback path directly toward target
+        // This ensures enemies always try to move toward player
+        const startWorld = this.gridToWorld(start.x, start.z);
+        const endWorld = this.gridToWorld(end.x, end.z);
+        return [
+            new THREE.Vector3(startWorld.x, 0, startWorld.z),
+            new THREE.Vector3(endWorld.x, 0, endWorld.z)
+        ];
     }
 
     reconstructPath(endKey) {

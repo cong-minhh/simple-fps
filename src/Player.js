@@ -47,6 +47,13 @@ export class Player {
         this.targetPeekAngle = 0;
         this.targetPeekOffset = 0;
 
+        // Audio callbacks
+        this.onFootstep = null;
+        this.onJump = null;
+        this.onLand = null;
+        this.footstepTimer = 0;
+        this.wasInAir = false;
+
         // Input flags - using direct booleans for speed
         this.moveF = false;
         this.moveB = false;
@@ -211,6 +218,8 @@ export class Player {
             this.velocityY = this.jumpForce;
             this.isOnGround = false;
             this.jump = false;
+            this.wasInAir = true;
+            if (this.onJump) this.onJump();
         }
 
         // Gravity
@@ -242,10 +251,28 @@ export class Player {
         const groundY = this.arena.getFloorHeight(pos.x, pos.z) + this.playerHeight;
         if (pos.y <= groundY) {
             pos.y = groundY;
+            // Landing sound
+            if (this.wasInAir && this.onLand) {
+                this.onLand();
+            }
+            this.wasInAir = false;
             this.velocityY = 0;
             this.isOnGround = true;
         } else {
             this.isOnGround = false;
+            this.wasInAir = true;
+        }
+
+        // Footstep sounds - only when moving on ground
+        if (this.isOnGround && len > 0) {
+            const stepInterval = this.sprint ? 0.3 : 0.45; // Faster steps when sprinting
+            this.footstepTimer += dt;
+            if (this.footstepTimer >= stepInterval) {
+                this.footstepTimer = 0;
+                if (this.onFootstep) this.onFootstep(this.sprint);
+            }
+        } else {
+            this.footstepTimer = 0;
         }
 
         // Peek/Lean update

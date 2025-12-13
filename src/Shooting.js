@@ -1,7 +1,7 @@
-// Shooting.js - Weapon system with multiple guns, ADS, and recoil
+// Shooting.js - Weapon system with multiple guns, ADS, and CS:GO-style recoil
 import * as THREE from 'three';
 
-// Weapon definitions
+// Weapon definitions with CS:GO-style recoil patterns
 const WEAPONS = {
     PISTOL: {
         name: 'Pistol',
@@ -10,13 +10,19 @@ const WEAPONS = {
         headMultiplier: 2.5,
         magazineSize: 12,
         reloadTime: 1500,
-        recoilAmount: 0.02,
-        recoilRecovery: 5,
+        recoilAmount: 0.025,
+        recoilRecovery: 8,
         spread: 0.01,
         adsSpread: 0.002,
         adsZoom: 1.2,
         automatic: false,
-        model: { bodySize: [0.08, 0.15, 0.3], barrelSize: [0.05, 0.05, 0.15], color: 0x2a2a2a }
+        model: { bodySize: [0.08, 0.15, 0.3], barrelSize: [0.05, 0.05, 0.15], color: 0x2a2a2a },
+        // Pistol pattern - consistent upward kick
+        recoilPattern: [
+            [0.015, 0], [0.018, 0.002], [0.02, -0.003], [0.022, 0.001],
+            [0.025, -0.002], [0.025, 0.003], [0.028, 0], [0.028, -0.002],
+            [0.03, 0.002], [0.03, -0.001], [0.032, 0], [0.032, 0.002]
+        ]
     },
     RIFLE: {
         name: 'Rifle',
@@ -25,13 +31,23 @@ const WEAPONS = {
         headMultiplier: 3,
         magazineSize: 30,
         reloadTime: 2500,
-        recoilAmount: 0.035,
-        recoilRecovery: 8,
+        recoilAmount: 0.04,
+        recoilRecovery: 6,
         spread: 0.02,
         adsSpread: 0.005,
         adsZoom: 1.5,
         automatic: true,
-        model: { bodySize: [0.06, 0.12, 0.5], barrelSize: [0.04, 0.04, 0.3], color: 0x1a1a1a }
+        model: { bodySize: [0.06, 0.12, 0.5], barrelSize: [0.04, 0.04, 0.3], color: 0x1a1a1a },
+        // Rifle pattern - like AK-47: up, then left, then right
+        recoilPattern: [
+            [0.025, 0], [0.03, 0], [0.035, 0], [0.04, 0], [0.045, 0],           // First 5: straight up
+            [0.045, -0.015], [0.04, -0.02], [0.035, -0.025], [0.03, -0.02],     // Shots 6-9: pull left
+            [0.025, -0.01], [0.02, 0], [0.02, 0.01], [0.025, 0.02],             // Shots 10-13: center
+            [0.03, 0.025], [0.035, 0.03], [0.04, 0.025], [0.035, 0.02],         // Shots 14-17: pull right
+            [0.03, 0.01], [0.025, 0], [0.02, -0.01], [0.025, -0.015],           // Shots 18-21: back left
+            [0.03, -0.02], [0.03, -0.01], [0.025, 0.01], [0.03, 0.02],          // Shots 22-25: oscillate
+            [0.035, 0.01], [0.03, -0.01], [0.025, 0], [0.02, 0.01], [0.02, -0.01] // Shots 26-30
+        ]
     },
     SMG: {
         name: 'SMG',
@@ -40,13 +56,22 @@ const WEAPONS = {
         headMultiplier: 2,
         magazineSize: 25,
         reloadTime: 2000,
-        recoilAmount: 0.025,
-        recoilRecovery: 12,
+        recoilAmount: 0.03,
+        recoilRecovery: 10,
         spread: 0.03,
         adsSpread: 0.015,
         adsZoom: 1.3,
         automatic: true,
-        model: { bodySize: [0.07, 0.1, 0.35], barrelSize: [0.035, 0.035, 0.12], color: 0x3a3a3a }
+        model: { bodySize: [0.07, 0.1, 0.35], barrelSize: [0.035, 0.035, 0.12], color: 0x3a3a3a },
+        // SMG pattern - fast but more random, moderate climb
+        recoilPattern: [
+            [0.015, 0], [0.02, 0.005], [0.022, -0.005], [0.025, 0.008],
+            [0.025, -0.01], [0.028, 0.012], [0.028, -0.008], [0.03, 0.005],
+            [0.028, -0.012], [0.025, 0.01], [0.025, -0.005], [0.028, 0.008],
+            [0.03, -0.01], [0.028, 0.012], [0.025, -0.008], [0.025, 0.005],
+            [0.028, -0.01], [0.03, 0.01], [0.028, -0.005], [0.025, 0.008],
+            [0.025, -0.008], [0.028, 0.005], [0.03, -0.01], [0.028, 0.012], [0.025, 0]
+        ]
     },
     SHOTGUN: {
         name: 'Shotgun',
@@ -56,13 +81,17 @@ const WEAPONS = {
         headMultiplier: 2,
         magazineSize: 6,
         reloadTime: 3000,
-        recoilAmount: 0.08,
-        recoilRecovery: 3,
+        recoilAmount: 0.12,
+        recoilRecovery: 4,
         spread: 0.08,
         adsSpread: 0.05,
         adsZoom: 1.1,
         automatic: false,
-        model: { bodySize: [0.08, 0.12, 0.55], barrelSize: [0.06, 0.06, 0.25], color: 0x4a3020 }
+        model: { bodySize: [0.08, 0.12, 0.55], barrelSize: [0.06, 0.06, 0.25], color: 0x4a3020 },
+        // Shotgun pattern - heavy single kick
+        recoilPattern: [
+            [0.08, 0.01], [0.09, -0.02], [0.1, 0.015], [0.09, -0.01], [0.08, 0.01], [0.07, 0]
+        ]
     }
 };
 
@@ -96,6 +125,22 @@ export class Shooting {
         this.recoilYaw = 0;   // Accumulated horizontal recoil
         this.shotsFired = 0;  // For recoil pattern
 
+        // Player reference for crouch state
+        this.player = null;
+
+        // Reload animation
+        this.reloadStartTime = 0;
+        this.reloadProgress = 0;
+        this.reloadTimeoutId = null; // Track reload timeout for cancellation
+        this.onReloadProgress = null; // Callback for HUD
+
+        // Weapon switch animation
+        this.isSwitchingWeapon = false;
+        this.switchProgress = 0;
+        this.switchStartTime = 0;
+        this.pendingWeaponKey = null;
+        this.switchDuration = 400; // ms for full switch animation
+
         // Raycaster
         this.raycaster = new THREE.Raycaster();
         this.raycaster.far = 100;
@@ -104,6 +149,7 @@ export class Shooting {
         this.onHit = null;
         this.onShoot = null;
         this.onWeaponChange = null;
+        this.onReload = null; // For reload sound
 
         // Enemy meshes
         this.enemyMeshes = [];
@@ -156,8 +202,41 @@ export class Shooting {
     }
 
     switchWeapon(weaponKey) {
-        if (this.isReloading || weaponKey === this.currentWeaponKey) return;
+        if (this.isSwitchingWeapon || weaponKey === this.currentWeaponKey) return;
 
+        // Cancel reload if switching weapons during reload
+        if (this.isReloading) {
+            this.cancelReload();
+        }
+
+        // Start weapon switch animation
+        this.isSwitchingWeapon = true;
+        this.switchProgress = 0;
+        this.switchStartTime = performance.now();
+        this.pendingWeaponKey = weaponKey;
+    }
+
+    cancelReload() {
+        if (!this.isReloading) return;
+
+        this.isReloading = false;
+        this.reloadProgress = 0;
+
+        // Clear the reload timeout
+        if (this.reloadTimeoutId) {
+            clearTimeout(this.reloadTimeoutId);
+            this.reloadTimeoutId = null;
+        }
+
+        // Notify HUD that reload cancelled
+        if (this.onReloadProgress) {
+            this.onReloadProgress(0, false);
+        }
+    }
+
+    // Actually apply the weapon switch (called at midpoint of animation)
+    applyWeaponSwitch() {
+        const weaponKey = this.pendingWeaponKey;
         this.currentWeaponKey = weaponKey;
         this.weapon = WEAPONS[weaponKey];
         this.ammo = this.weapon.magazineSize;
@@ -178,13 +257,33 @@ export class Shooting {
     }
 
     reload() {
-        if (this.isReloading || this.ammo === this.weapon.magazineSize) return;
+        if (this.isReloading || this.isSwitchingWeapon || this.ammo === this.weapon.magazineSize) return;
 
         this.isReloading = true;
+        this.reloadStartTime = performance.now();
+        this.reloadProgress = 0;
 
-        setTimeout(() => {
+        // Notify HUD that reload started
+        if (this.onReloadProgress) {
+            this.onReloadProgress(0, true);
+        }
+
+        // Play reload sound
+        if (this.onReload) {
+            this.onReload();
+        }
+
+        this.reloadTimeoutId = setTimeout(() => {
             this.ammo = this.weapon.magazineSize;
             this.isReloading = false;
+            this.reloadProgress = 0;
+            this.reloadTimeoutId = null;
+
+            // Notify HUD that reload finished
+            if (this.onReloadProgress) {
+                this.onReloadProgress(1, false);
+            }
+
             if (this.onWeaponChange) {
                 this.onWeaponChange(this.weapon, this.ammo);
             }
@@ -242,15 +341,127 @@ export class Shooting {
         this.enemyMeshes = meshes;
     }
 
+    setPlayer(player) {
+        this.player = player;
+    }
+
     update(dt) {
+        const now = performance.now();
+
+        // === Weapon Switch Animation (Realistic tactical swap) ===
+        if (this.isSwitchingWeapon) {
+            this.switchProgress = Math.min(1, (now - this.switchStartTime) / this.switchDuration);
+
+            // At 50% progress, actually swap the weapon
+            if (this.switchProgress >= 0.5 && this.pendingWeaponKey) {
+                this.applyWeaponSwitch();
+                this.pendingWeaponKey = null;
+            }
+
+            // Realistic weapon swap animation
+            if (this.gunModel) {
+                // Smooth easing
+                const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+                if (this.switchProgress < 0.5) {
+                    // Phase 1: Lower and rotate current weapon down/right (holstering)
+                    const t = easeInOut(this.switchProgress * 2);
+                    this.gunModel.position.y = this.defaultGunPos.y - t * 0.35;
+                    this.gunModel.position.x = this.defaultGunPos.x + t * 0.2;
+                    this.gunModel.rotation.x = -t * 0.6;
+                    this.gunModel.rotation.z = -t * 0.3;
+                    this.gunModel.rotation.y = -0.1 - t * 0.4;
+                } else {
+                    // Phase 2: Bring up new weapon from below/left
+                    const t = easeOut((this.switchProgress - 0.5) * 2);
+                    this.gunModel.position.y = this.defaultGunPos.y - 0.35 + t * 0.35;
+                    this.gunModel.position.x = this.defaultGunPos.x - 0.15 + t * 0.15;
+                    this.gunModel.rotation.x = -0.4 + t * 0.4;
+                    this.gunModel.rotation.z = 0.2 - t * 0.2;
+                    this.gunModel.rotation.y = -0.3 + t * 0.2;
+                }
+            }
+
+            // End switch animation
+            if (this.switchProgress >= 1) {
+                this.isSwitchingWeapon = false;
+                this.switchProgress = 0;
+                if (this.gunModel) {
+                    this.gunModel.position.copy(this.defaultGunPos);
+                    this.gunModel.rotation.set(0, -0.1, 0);
+                }
+            }
+            return; // Block other gun updates during switch
+        }
+
+        // === Reload Animation (Realistic tactical reload) ===
+        if (this.isReloading) {
+            this.reloadProgress = Math.min(1, (now - this.reloadStartTime) / this.weapon.reloadTime);
+
+            // Notify HUD about progress
+            if (this.onReloadProgress) {
+                this.onReloadProgress(this.reloadProgress, true);
+            }
+
+            // Realistic reload animation phases
+            if (this.gunModel) {
+                // Easing for smooth motion
+                const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+                if (this.reloadProgress < 0.15) {
+                    // Phase 1: Tilt gun to eject/access magazine (0-15%)
+                    const t = easeInOut(this.reloadProgress / 0.15);
+                    this.gunModel.rotation.x = -t * 0.3;
+                    this.gunModel.rotation.z = t * 0.4;
+                    this.gunModel.position.y = this.defaultGunPos.y - t * 0.08;
+                    this.gunModel.position.x = this.defaultGunPos.x - t * 0.1;
+                } else if (this.reloadProgress < 0.35) {
+                    // Phase 2: Drop magazine - quick downward motion (15-35%)
+                    const t = easeInOut((this.reloadProgress - 0.15) / 0.2);
+                    this.gunModel.rotation.x = -0.3 - t * 0.15;
+                    this.gunModel.rotation.z = 0.4;
+                    this.gunModel.position.y = this.defaultGunPos.y - 0.08 - t * 0.05;
+                } else if (this.reloadProgress < 0.6) {
+                    // Phase 3: Insert new magazine - gun stays tilted (35-60%)
+                    const t = easeInOut((this.reloadProgress - 0.35) / 0.25);
+                    this.gunModel.rotation.x = -0.45 + t * 0.2;
+                    this.gunModel.rotation.z = 0.4 - t * 0.1;
+                    // Slight upward push as mag clicks in
+                    this.gunModel.position.y = this.defaultGunPos.y - 0.13 + t * 0.03;
+                } else if (this.reloadProgress < 0.8) {
+                    // Phase 4: Slap/release bolt - quick motion (60-80%)
+                    const t = easeInOut((this.reloadProgress - 0.6) / 0.2);
+                    this.gunModel.rotation.x = -0.25 + t * 0.15;
+                    this.gunModel.rotation.z = 0.3 - t * 0.2;
+                    this.gunModel.position.x = this.defaultGunPos.x - 0.1 + t * 0.05;
+                    // Quick jolt for bolt release
+                    const jolt = Math.sin(t * Math.PI) * 0.02;
+                    this.gunModel.position.z = this.defaultGunPos.z + jolt;
+                } else {
+                    // Phase 5: Return to ready position (80-100%)
+                    const t = easeInOut((this.reloadProgress - 0.8) / 0.2);
+                    this.gunModel.rotation.x = -0.1 * (1 - t);
+                    this.gunModel.rotation.z = 0.1 * (1 - t);
+                    this.gunModel.position.x = this.defaultGunPos.x - 0.05 * (1 - t);
+                    this.gunModel.position.y = this.defaultGunPos.y - 0.05 * (1 - t);
+                    this.gunModel.position.z = this.defaultGunPos.z;
+                }
+            }
+        } else if (this.gunModel) {
+            // Reset reload animation when not reloading
+            this.gunModel.rotation.z = 0;
+        }
+
         // ADS transition
         const adsTarget = this.isAiming ? 1 : 0;
         this.adsTransition += (adsTarget - this.adsTransition) * this.adsSpeed * dt;
 
-        // Update gun position (lerp between hip and ADS)
-        if (this.gunModel) {
+        // Update gun position (lerp between hip and ADS) - only if not in reload animation
+        if (this.gunModel && !this.isReloading) {
             this.gunModel.position.lerpVectors(this.defaultGunPos, this.adsGunPos, this.adsTransition);
             this.gunModel.rotation.y = -0.1 * (1 - this.adsTransition);
+            this.gunModel.rotation.x = 0;
         }
 
         // Update FOV for zoom
@@ -278,7 +489,7 @@ export class Shooting {
     }
 
     tryShoot() {
-        if (this.isReloading) return false;
+        if (this.isReloading || this.isSwitchingWeapon) return false;
         if (this.ammo <= 0) {
             this.reload();
             return false;
@@ -350,18 +561,34 @@ export class Shooting {
     }
 
     applyRecoil() {
-        // Recoil pattern - gets worse with consecutive shots
-        const recoilMultiplier = 1 + this.shotsFired * 0.1;
-        const baseRecoil = this.weapon.recoilAmount * (this.isAiming ? 0.6 : 1);
+        // CS:GO-style recoil pattern system
+        const pattern = this.weapon.recoilPattern;
+        const patternIndex = Math.min(this.shotsFired - 1, pattern.length - 1);
+        const [patternPitch, patternYaw] = pattern[patternIndex];
 
-        // Vertical recoil (always up)
-        this.recoilPitch += baseRecoil * recoilMultiplier;
+        // ADS reduces recoil by 40%
+        const adsMultiplier = this.isAiming ? 0.6 : 1;
 
-        // Horizontal recoil (random sway)
-        this.recoilYaw += (Math.random() - 0.5) * baseRecoil * 0.5;
+        // Crouching reduces recoil by 30% (like CS:GO)
+        const isCrouching = this.player && this.player.isCrouching;
+        const crouchMultiplier = isCrouching ? 0.7 : 1;
 
-        // Direct camera kick
-        this.camera.rotation.x -= baseRecoil * 0.5;
+        // Add slight randomness for natural feel (±10% variation)
+        const randomFactor = 0.9 + Math.random() * 0.2;
+
+        // Calculate final recoil values with all multipliers
+        const totalMultiplier = adsMultiplier * crouchMultiplier * randomFactor;
+        const recoilPitch = patternPitch * totalMultiplier;
+        const recoilYaw = patternYaw * totalMultiplier;
+
+        // Accumulate recoil for recovery system
+        this.recoilPitch += recoilPitch;
+        this.recoilYaw += recoilYaw;
+
+        // Apply immediate camera kick (direct visual feedback)
+        // Positive rotation.x = look up (recoil kicks view upward)
+        this.camera.rotation.x += recoilPitch * 1.5;
+        this.camera.rotation.y += recoilYaw * 1.2;
     }
 
     animateRecoil() {

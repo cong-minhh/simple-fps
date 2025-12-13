@@ -205,6 +205,55 @@ canvas {
   color: #ffaa00;
 }
 
+/* Reload Indicator - Circular progress near weapon/gun */
+#reload-indicator {
+  position: absolute;
+  bottom: 30px;
+  right: 180px;
+  width: 50px;
+  height: 50px;
+  pointer-events: none;
+  z-index: 101;
+}
+
+#reload-indicator .reload-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(#00ff88 var(--progress, 0%),
+      rgba(255, 255, 255, 0.2) var(--progress, 0%));
+  mask: radial-gradient(transparent 55%, black 56%);
+  -webkit-mask: radial-gradient(transparent 55%, black 56%);
+  filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.6));
+  animation: reload-pulse 0.8s ease infinite;
+}
+
+#reload-indicator .reload-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  font-weight: bold;
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.8);
+}
+
+@keyframes reload-pulse {
+
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 @keyframes ammo-pulse {
   from {
     opacity: 0.6;

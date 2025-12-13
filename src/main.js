@@ -41,6 +41,7 @@ class Game {
         this.waveManager.setPlayer(this.player);
         this.waveManager.setShooting(this.shooting);
         this.waveManager.initPathfinding(); // Initialize A* pathfinding
+        this.shooting.setPlayer(this.player); // For crouch recoil reduction
 
         // Set up callbacks
         this.setupCallbacks();
@@ -144,7 +145,6 @@ class Game {
 
         this.shooting.onHit = (enemy, damage, hitPoint, isHeadshot) => {
             const killed = enemy.takeDamage(damage);
-            this.audio.playHit();
             this.hud.showHitmarker(isHeadshot); // Show hitmarker
             if (killed) {
                 this.waveManager.onEnemyDeath(enemy);
@@ -153,6 +153,33 @@ class Game {
 
         this.shooting.onWeaponChange = (weapon, ammo) => {
             this.hud.updateWeapon(weapon, ammo, this.shooting.isReloading);
+        };
+
+        this.shooting.onReloadProgress = (progress, isReloading) => {
+            this.hud.updateReloadIndicator(progress, isReloading);
+        };
+
+        // Reload sound
+        this.shooting.onReload = () => {
+            this.audio.playReload();
+        };
+
+        // Update shoot callback to pass weapon type for different sounds
+        const originalOnShoot = this.shooting.onShoot;
+        this.shooting.onShoot = () => {
+            this.audio.playGunshot(this.shooting.currentWeaponKey);
+            if (originalOnShoot) originalOnShoot();
+        };
+
+        // Player movement audio
+        this.player.onFootstep = (isSprinting) => {
+            this.audio.playFootstep(isSprinting);
+        };
+        this.player.onJump = () => {
+            this.audio.playJump();
+        };
+        this.player.onLand = () => {
+            this.audio.playLand();
         };
 
         // Player damage audio

@@ -12,7 +12,9 @@ export class HUD {
             indicators: document.getElementById('enemy-indicators'),
             hitmarker: document.getElementById('hitmarker'),
             weaponName: document.getElementById('weapon-name'),
-            ammoCount: document.getElementById('ammo-count')
+            ammoCount: document.getElementById('ammo-count'),
+            reloadIndicator: document.getElementById('reload-indicator'),
+            reloadProgress: document.querySelector('#reload-indicator .reload-progress')
         };
 
         this.startTime = 0;
@@ -80,6 +82,27 @@ export class HUD {
             hitmarker.classList.remove('show', 'headshot');
             hitmarker.classList.add('hidden');
         }, isHeadshot ? 250 : 150);
+    }
+
+    /**
+     * Update reload indicator progress
+     * @param {number} progress - 0 to 1 progress value
+     * @param {boolean} isReloading - Whether currently reloading
+     */
+    updateReloadIndicator(progress, isReloading) {
+        const indicator = this.elements.reloadIndicator;
+        const progressEl = this.elements.reloadProgress;
+
+        if (!indicator || !progressEl) return;
+
+        if (isReloading) {
+            indicator.classList.remove('hidden');
+            // Update conic-gradient progress
+            const percent = Math.round(progress * 100);
+            progressEl.style.setProperty('--progress', `${percent}%`);
+        } else {
+            indicator.classList.add('hidden');
+        }
     }
 
     show() {

@@ -96,7 +96,7 @@ export class Enemy {
         // Pathfinding state (optimized - only recalculate when needed)
         this.currentPath = [];
         this.currentPathIndex = 0;
-        this.pathUpdateInterval = 0.5; // Seconds between path updates
+        this.pathUpdateInterval = 0.3; // Faster path updates for more responsive AI
         this.lastPathUpdate = 0;
         this.lastPlayerPos = new THREE.Vector3();
 
@@ -109,9 +109,10 @@ export class Enemy {
         // Collision settings
         this.collisionRadius = 0.4; // Enemy hitbox radius
         this.stuckTimer = 0;
-        this.stuckThreshold = 1.0; // Seconds before considering stuck
+        this.stuckThreshold = 0.5; // Faster stuck detection (0.5s)
         this.lastPosition = new THREE.Vector3();
         this.stuckRecoveryDir = new THREE.Vector3();
+        this.stuckRecoveryTimer = 0; // Time spent in recovery mode
 
         // Create mesh
         this.mesh = this.createMesh();
@@ -545,7 +546,17 @@ export class Enemy {
 
         const dx = direction.x * this.speed * deltaTime;
         const dz = direction.z * this.speed * deltaTime;
-        this.tryMove(dx, dz, deltaTime);
+
+        if (!this.tryMove(dx, dz, deltaTime)) {
+            // Blocked - try perpendicular movement to go around obstacle
+            const perpX = direction.z * this.strafeDirection;
+            const perpZ = -direction.x * this.strafeDirection;
+
+            if (!this.tryMove(perpX * this.speed * deltaTime, perpZ * this.speed * deltaTime, deltaTime)) {
+                // Both blocked - flip strafe direction for next time
+                this.strafeDirection *= -1;
+            }
+        }
 
         this.mesh.lookAt(playerPos.x, this.mesh.position.y, playerPos.z);
     }
