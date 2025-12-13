@@ -12,7 +12,7 @@ A fast-paced, low-poly FPS arena survival game built with Three.js and Vite. Sur
 
 ## Controls
 
-| Key | Action |
+| K1ey | Action |
 | --- | --- |
 | **W, A, S, D** | Move |
 | **SHIFT** | Sprint |
