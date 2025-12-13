@@ -1,6 +1,6 @@
 # Vercel FPS: Low-Poly Arena
 
-A fast-paced, low-poly FPS arena survival game built with Three.js and Vite. Survive endless waves of enemies, manage your ammo, and utilize a variety of weapons to achieve the highest score.
+A FPS arena survival game built with Three.js and Vite. Survive waves of enemies, manage your ammo, and utilize weapons to achieve the highest score.
 
 ## Features
 
