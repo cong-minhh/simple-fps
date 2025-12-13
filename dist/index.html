@@ -1,22 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vercel FPS: Low-Poly Arena</title>
   <meta name="description" content="A minimalistic low-poly FPS game - survive waves of enemies in a fast-paced arena!">
-  <script type="module" crossorigin src="/assets/index-DgG0Xysj.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CruwLAlN.css">
+  <script type="module" crossorigin src="/assets/index-BHsBw3FJ.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BNbVqs3f.css">
 </head>
+
 <body>
   <!-- Game Canvas Container -->
   <div id="game-container"></div>
-  
+
   <!-- HUD Overlay -->
   <div id="hud" class="hidden">
-    <div id="crosshair">+</div>
+    <div id="crosshair"></div>
+    <div id="hitmarker" class="hidden"></div>
+    <!-- Reload Indicator -->
+    <div id="reload-indicator" class="hidden">
+      <div class="reload-progress"></div>
+      <span class="reload-text">R</span>
+    </div>
     <div id="health-container">
-      <div id="health-bar"></div>
+      <div id="health-bar-bg">
+        <div id="health-bar"></div>
+      </div>
       <span id="health-text">100</span>
     </div>
     <div id="stats">
@@ -25,21 +35,93 @@
       <div id="timer">Time: 0s</div>
       <div id="score">Score: 0</div>
     </div>
+    <!-- Weapon HUD -->
+    <div id="weapon-hud">
+      <div id="weapon-name">Pistol</div>
+      <div id="ammo-count">12 / 12</div>
+    </div>
+    <!-- Weapon Selector -->
+    <div id="weapon-selector">
+      <div class="weapon-slot active" data-slot="1">
+        <span class="slot-key">1</span>
+        <span class="slot-name">Rifle</span>
+      </div>
+      <div class="weapon-slot" data-slot="2">
+        <span class="slot-key">2</span>
+        <span class="slot-name">SMG</span>
+      </div>
+      <div class="weapon-slot" data-slot="3">
+        <span class="slot-key">3</span>
+        <span class="slot-name">Shotgun</span>
+      </div>
+      <div class="weapon-slot" data-slot="4">
+        <span class="slot-key">4</span>
+        <span class="slot-name">Pistol</span>
+      </div>
+    </div>
+    <!-- Enemy Direction Indicators -->
+    <div id="enemy-indicators"></div>
   </div>
+
 
   <!-- Start Menu -->
   <div id="start-menu" class="menu">
-    <h1>VERCEL FPS</h1>
-    <h2>Low-Poly Arena</h2>
-    <p class="instructions">
-      WASD - Move<br>
-      SHIFT - Sprint<br>
-      SPACE - Jump<br>
-      MOUSE - Aim<br>
-      CLICK - Shoot
-    </p>
-    <button id="start-btn">CLICK TO PLAY</button>
-    <p id="high-score">High Score: 0</p>
+    <div class="menu-content">
+      <h1 class="glitch-title" data-text="VERCEL FPS">VERCEL FPS</h1>
+      <p class="subtitle">LOW-POLY ARENA</p>
+
+      <div class="menu-controls">
+        <button id="start-btn" class="menu-btn primary">
+          <span class="btn-text">INITIALIZE</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="settings-btn" class="menu-btn secondary">
+          <span class="btn-text">SYSTEM</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+
+      <div class="stats-display">
+        <p id="high-score">RECORD // 0</p>
+      </div>
+
+      <div class="instructions-panel">
+        <div class="key-row"><span>WASD</span> MOVE</div>
+        <div class="key-row"><span>SHIFT</span> SPRINT</div>
+        <div class="key-row"><span>SPACE</span> JUMP</div>
+        <div class="key-row"><span>LMB</span> SHOOT</div>
+        <div class="key-row"><span>RMB</span> AIM</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel" class="menu hidden">
+    <h1>⚙ SETTINGS</h1>
+    <div class="settings-content">
+      <div class="setting-row">
+        <label for="particles-toggle">Particles</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="particles-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <label for="flicker-toggle">Flickering Lights</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="flicker-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <label for="hitmarker-toggle">Hitmarker</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="hitmarker-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <button id="settings-back-btn">BACK</button>
   </div>
 
   <!-- Game Over Menu -->
@@ -57,4 +139,5 @@
   </div>
 
 </body>
+
 </html>
