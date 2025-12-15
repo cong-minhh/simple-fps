@@ -353,14 +353,16 @@ class GameServer {
 
         player.position = message.position;
         player.rotation = message.rotation;
+        player.state = message.state || {}; // Store player state
         player.lastUpdate = Date.now();
 
-        // Broadcast to others
+        // Broadcast to others including state
         room.broadcast({
             type: 'player_position',
             playerId,
             position: player.position,
-            rotation: player.rotation
+            rotation: player.rotation,
+            state: player.state
         }, playerId);
     }
 

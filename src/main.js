@@ -216,9 +216,15 @@ class Game {
         };
         this.player.onJump = () => {
             this.audio.playJump();
+            if (this.multiplayerManager && this.state === STATES.MULTIPLAYER_PLAYING) {
+                this.multiplayerManager.onPlayerJump();
+            }
         };
         this.player.onLand = () => {
             this.audio.playLand();
+            if (this.multiplayerManager && this.state === STATES.MULTIPLAYER_PLAYING) {
+                this.multiplayerManager.onPlayerLand();
+            }
         };
 
         // Player damage audio & visual
@@ -251,6 +257,7 @@ class Game {
                     this.network
                 );
                 this.multiplayerManager.setLocalPlayer(this.player);
+                this.multiplayerManager.setShooting(this.shooting);
                 this.multiplayerManager.localPlayerId = result.playerId;
 
                 // Setup multiplayer manager callbacks BEFORE adding players

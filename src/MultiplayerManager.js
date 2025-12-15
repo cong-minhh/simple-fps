@@ -11,9 +11,10 @@ export class MultiplayerManager {
         // Remote players
         this.remotePlayers = new Map();
 
-        // Local player reference
+        // Local player and shooting references
         this.localPlayer = null;
         this.localPlayerId = null;
+        this.shooting = null; // For reading ADS, reload, weapon state
 
         // Game state
         this.gameStarted = false;
@@ -98,6 +99,10 @@ export class MultiplayerManager {
             const player = this.remotePlayers.get(data.playerId);
             if (player) {
                 player.updatePosition(data.position, data.rotation);
+                // Apply visual states for crouch, peek, ADS, sprint, etc.
+                if (data.state) {
+                    player.updateState(data.state);
+                }
             }
         });
 
@@ -235,6 +240,10 @@ export class MultiplayerManager {
         }
     }
 
+    setShooting(shooting) {
+        this.shooting = shooting;
+    }
+
     addRemotePlayer(playerData) {
         if (this.remotePlayers.has(playerData.id)) return;
 
@@ -264,14 +273,68 @@ export class MultiplayerManager {
             player.update(deltaTime);
         });
 
-        // Send local player position
+        // Send local player position with state
         if (this.localPlayer && this.network.isConnected && !this.isRespawning) {
             const pos = this.localPlayer.getPosition();
             const rot = {
                 x: this.localPlayer.camera.rotation.x,
                 y: this.localPlayer.camera.rotation.y
             };
-            this.network.sendPosition(pos, rot);
+
+            // Collect local player state for visual sync
+            const state = {
+                isCrouching: this.localPlayer.isCrouching || false,
+                peekState: this.localPlayer.peekLeft ? -1 : (this.localPlayer.peekRight ? 1 : 0),
+                isAiming: this.shooting?.isAiming || false,
+                isSprinting: this.localPlayer.sprint || false,
+                isReloading: this.shooting?.isReloading || false,
+                weapon: this.shooting?.currentWeaponKey || 'RIFLE'
+            };
+
+            this.network.sendPosition(pos, rot, state);
+        }
+    }
+
+    onPlayerJump() {
+        if (this.localPlayer && this.network.isConnected) {
+            // Force immediate update on jump to ensure other players see it
+            const pos = this.localPlayer.getPosition();
+            const rot = {
+                x: this.localPlayer.camera.rotation.x,
+                y: this.localPlayer.camera.rotation.y
+            };
+            const state = {
+                isCrouching: false,
+                peekState: this.localPlayer.peekLeft ? -1 : (this.localPlayer.peekRight ? 1 : 0),
+                isAiming: this.shooting?.isAiming || false,
+                isSprinting: this.localPlayer.sprint || false,
+                isReloading: this.shooting?.isReloading || false,
+                weapon: this.shooting?.currentWeaponKey || 'RIFLE'
+            };
+            this.network.sendPosition(pos, rot, state, true); // Force update
+        }
+    }
+
+    onPlayerLand() {
+        if (this.localPlayer && this.network.isConnected) {
+            // Force immediate update on landing
+            const pos = this.localPlayer.getPosition();
+            const rot = {
+                x: this.localPlayer.camera.rotation.x,
+                y: this.localPlayer.camera.rotation.y
+            };
+            const state = {
+                isCrouching: this.localPlayer.sprint || false, // Use current state
+                peekState: this.localPlayer.peekLeft ? -1 : (this.localPlayer.peekRight ? 1 : 0),
+                isAiming: this.shooting?.isAiming || false,
+                isSprinting: this.localPlayer.sprint || false,
+                isReloading: this.shooting?.isReloading || false,
+                weapon: this.shooting?.currentWeaponKey || 'RIFLE'
+            };
+            // Correct crouching check
+            state.isCrouching = this.localPlayer.isCrouching || false;
+
+            this.network.sendPosition(pos, rot, state, true); // Force update
         }
     }
 

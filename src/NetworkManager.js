@@ -131,10 +131,10 @@ export class NetworkManager {
     }
 
     // Game-specific methods
-    sendPosition(position, rotation) {
+    sendPosition(position, rotation, state = {}, force = false) {
         const now = Date.now();
-        if (now - this.lastPositionUpdate < this.positionUpdateInterval) {
-            return;
+        if (!force && now - this.lastPositionUpdate < this.positionUpdateInterval) {
+            return; // Throttled
         }
         this.lastPositionUpdate = now;
 
@@ -148,6 +148,15 @@ export class NetworkManager {
             rotation: {
                 x: rotation.x,
                 y: rotation.y
+            },
+            // Player state for visual sync
+            state: {
+                isCrouching: state.isCrouching || false,
+                peekState: state.peekState || 0, // -1 left, 0 none, 1 right
+                isAiming: state.isAiming || false,
+                isSprinting: state.isSprinting || false,
+                isReloading: state.isReloading || false,
+                weapon: state.weapon || 'RIFLE'
             }
         });
     }
