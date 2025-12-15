@@ -1,0 +1,343 @@
+// MultiplayerManager.js - Manages multiplayer game state and remote players
+import { RemotePlayer } from './RemotePlayer.js';
+
+export class MultiplayerManager {
+    constructor(scene, arena, networkManager, hud = null) {
+        this.scene = scene;
+        this.arena = arena;
+        this.network = networkManager;
+        this.hud = hud; // Direct HUD reference for respawn overlay
+
+        // Remote players
+        this.remotePlayers = new Map();
+
+        // Local player reference
+        this.localPlayer = null;
+        this.localPlayerId = null;
+
+        // Game state
+        this.gameStarted = false;
+        this.scores = [];
+        this.killFeed = [];
+        this.respawnCountdown = 0;
+        this.isRespawning = false;
+
+        // Callbacks
+        this.onScoreUpdate = null;
+        this.onKillFeed = null;
+        this.onGameStart = null;
+        this.onGameEnd = null;
+        this.onRespawnStart = null;
+        this.onRespawnEnd = null;
+        this.onPlayerCountChange = null;
+
+        // Setup network handlers
+        this.setupNetworkHandlers();
+    }
+
+    setupNetworkHandlers() {
+        // Player joined
+        this.network.on('player_joined', (data) => {
+            console.log(`Player joined: ${data.player.name}`);
+            this.addRemotePlayer(data.player);
+            if (this.onPlayerCountChange) {
+                this.onPlayerCountChange(this.getPlayerCount());
+            }
+        });
+
+        // Player left
+        this.network.on('player_left', (data) => {
+            console.log(`Player left: ${data.playerName}`);
+            this.removeRemotePlayer(data.playerId);
+            if (this.onPlayerCountChange) {
+                this.onPlayerCountChange(this.getPlayerCount());
+            }
+        });
+
+        // Initial player list on join
+        this.network.on('joined', (data) => {
+            this.localPlayerId = data.playerId;
+
+            // Add existing players
+            data.players.forEach(playerData => {
+                if (playerData.id !== this.localPlayerId) {
+                    this.addRemotePlayer(playerData);
+                }
+            });
+
+            if (data.gameStarted) {
+                this.gameStarted = true;
+                if (this.onGameStart) this.onGameStart(data.config);
+            }
+
+            if (this.onPlayerCountChange) {
+                this.onPlayerCountChange(this.getPlayerCount());
+            }
+        });
+
+        // Game start
+        this.network.on('game_start', (data) => {
+            console.log('Game started!');
+            this.gameStarted = true;
+            this.scores = [];
+            this.killFeed = [];
+
+            if (this.onGameStart) this.onGameStart(data.config);
+        });
+
+        // Game end
+        this.network.on('game_end', (data) => {
+            console.log('Game ended:', data.reason);
+            this.gameStarted = false;
+
+            if (this.onGameEnd) this.onGameEnd(data);
+        });
+
+        // Position updates
+        this.network.on('player_position', (data) => {
+            const player = this.remotePlayers.get(data.playerId);
+            if (player) {
+                player.updatePosition(data.position, data.rotation);
+            }
+        });
+
+        // Shoot events
+        this.network.on('player_shoot', (data) => {
+            const player = this.remotePlayers.get(data.playerId);
+            if (player) {
+                player.showShootEffect();
+            }
+        });
+
+        // Damage events
+        this.network.on('player_damage', (data) => {
+            if (data.targetId === this.localPlayerId) {
+                // Local player took damage - only if alive
+                if (this.localPlayer && !this.localPlayer.isDead && !this.isRespawning) {
+                    this.localPlayer.takeDamage(data.damage);
+                }
+            } else {
+                // Remote player took damage
+                const player = this.remotePlayers.get(data.targetId);
+                if (player) {
+                    player.setHealth(data.health);
+                    player.showDamageFlash();
+                }
+            }
+        });
+
+        // Kill events
+        this.network.on('player_killed', (data) => {
+            // Update scores
+            this.scores = data.scores;
+            if (this.onScoreUpdate) this.onScoreUpdate(this.scores);
+
+            // Add to kill feed
+            const killInfo = {
+                killer: data.killerName,
+                victim: data.victimName,
+                isHeadshot: data.isHeadshot,
+                isLocalKiller: data.killerId === this.localPlayerId,
+                isLocalVictim: data.victimId === this.localPlayerId
+            };
+            this.killFeed.unshift(killInfo);
+            if (this.killFeed.length > 5) this.killFeed.pop();
+            if (this.onKillFeed) this.onKillFeed(this.killFeed);
+
+            // Handle remote player death
+            if (data.victimId !== this.localPlayerId) {
+                const victim = this.remotePlayers.get(data.victimId);
+                if (victim) {
+                    victim.setAlive(false);
+                }
+            } else {
+                // Local player died - mark as dead immediately
+                if (this.localPlayer) {
+                    this.localPlayer.isDead = true;
+                    this.localPlayer.health = 0;
+                }
+                this.isRespawning = true;
+                this.respawnCountdown = 3;
+                if (this.onRespawnStart) this.onRespawnStart(this.respawnCountdown);
+            }
+        });
+
+        // Respawn events
+        this.network.on('player_respawn', (data) => {
+            console.log('Respawn event received:', data.playerId, 'Local ID:', this.localPlayerId);
+
+            if (data.playerId === this.localPlayerId) {
+                // Local player respawned
+                console.log('Local player respawning!');
+                this.isRespawning = false;
+                this.respawnCountdown = 0;
+
+                if (this.localPlayer) {
+                    this.localPlayer.respawnAt(data.position);
+                }
+
+                // Hide the respawn overlay - try both methods
+                // Direct HUD call
+                if (this.hud) {
+                    console.log('Hiding respawn overlay via direct HUD reference');
+                    this.hud.hideRespawnOverlay();
+                }
+                // Also try callback
+                if (this.onRespawnEnd) {
+                    console.log('Calling onRespawnEnd callback');
+                    this.onRespawnEnd();
+                }
+            } else {
+                // Remote player respawned
+                const player = this.remotePlayers.get(data.playerId);
+                if (player) {
+                    player.setAlive(true);
+                    player.setHealth(data.health);
+                    player.updatePosition(data.position, { x: 0, y: 0 });
+                }
+            }
+        });
+
+        // Weapon change
+        this.network.on('player_weapon', (data) => {
+            const player = this.remotePlayers.get(data.playerId);
+            if (player) {
+                player.weapon = data.weapon;
+            }
+        });
+    }
+
+    setLocalPlayer(player) {
+        this.localPlayer = player;
+
+        // Add respawn method to player if not exists
+        if (!player.respawnAt) {
+            player.respawnAt = (position) => {
+                try {
+                    // Reset player position (use camera height for Y)
+                    const spawnY = position.y || 1.7;
+                    player.camera.position.set(position.x, spawnY, position.z);
+
+                    // Reset velocity (Player uses separate velocityX/Y/Z properties)
+                    player.velocityX = 0;
+                    player.velocityY = 0;
+                    player.velocityZ = 0;
+
+                    console.log('Local player respawned at:', position);
+                } catch (e) {
+                    console.error('Error in respawnAt:', e);
+                }
+
+                // Always reset health and isDead, even if position update fails
+                player.health = player.maxHealth;
+                player.isDead = false;
+            };
+        }
+    }
+
+    addRemotePlayer(playerData) {
+        if (this.remotePlayers.has(playerData.id)) return;
+
+        const remotePlayer = new RemotePlayer(this.scene, playerData);
+        this.remotePlayers.set(playerData.id, remotePlayer);
+
+        console.log(`Added remote player: ${playerData.name}`);
+    }
+
+    removeRemotePlayer(playerId) {
+        const player = this.remotePlayers.get(playerId);
+        if (player) {
+            player.dispose();
+            this.remotePlayers.delete(playerId);
+        }
+    }
+
+    update(deltaTime) {
+        // Update respawn countdown
+        if (this.isRespawning && this.respawnCountdown > 0) {
+            this.respawnCountdown -= deltaTime;
+            if (this.respawnCountdown < 0) this.respawnCountdown = 0;
+        }
+
+        // Update remote players
+        this.remotePlayers.forEach(player => {
+            player.update(deltaTime);
+        });
+
+        // Send local player position
+        if (this.localPlayer && this.network.isConnected && !this.isRespawning) {
+            const pos = this.localPlayer.getPosition();
+            const rot = {
+                x: this.localPlayer.camera.rotation.x,
+                y: this.localPlayer.camera.rotation.y
+            };
+            this.network.sendPosition(pos, rot);
+        }
+    }
+
+    // Get all remote player meshes for hit detection
+    getRemotePlayerMeshes() {
+        const meshes = [];
+        this.remotePlayers.forEach(player => {
+            if (player.isAlive) {
+                // Add body and head as separate targets
+                meshes.push({
+                    mesh: player.getMesh(),
+                    headMesh: player.getHeadMesh(),
+                    playerId: player.id,
+                    isPlayer: true
+                });
+            }
+        });
+        return meshes;
+    }
+
+    // Called when local player hits a remote player
+    handleLocalHit(targetPlayerId, damage, isHeadshot) {
+        this.network.sendHit(targetPlayerId, damage, isHeadshot);
+    }
+
+    // Called when local player shoots
+    handleLocalShoot(weapon, direction) {
+        this.network.sendShoot(weapon, direction);
+    }
+
+    getPlayerCount() {
+        return this.remotePlayers.size + 1; // +1 for local player
+    }
+
+    getScores() {
+        return this.scores;
+    }
+
+    getKillFeed() {
+        return this.killFeed;
+    }
+
+    getRespawnCountdown() {
+        return Math.ceil(this.respawnCountdown);
+    }
+
+    isGameActive() {
+        return this.gameStarted && !this.isRespawning;
+    }
+
+    reset() {
+        // Remove all remote players
+        this.remotePlayers.forEach(player => {
+            player.dispose();
+        });
+        this.remotePlayers.clear();
+
+        this.gameStarted = false;
+        this.scores = [];
+        this.killFeed = [];
+        this.respawnCountdown = 0;
+        this.isRespawning = false;
+    }
+
+    dispose() {
+        this.reset();
+        this.network.disconnect();
+    }
+}

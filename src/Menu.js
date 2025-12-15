@@ -1,4 +1,4 @@
-// Menu.js - Start and Game Over menu management with Settings
+// Menu.js - Start and Game Over menu management with Settings and Multiplayer Lobby
 export class Menu {
     constructor() {
         this.elements = {
@@ -16,55 +16,87 @@ export class Menu {
             highScore: document.getElementById('high-score'),
             finalScore: document.getElementById('final-score'),
             finalTime: document.getElementById('final-time'),
-            newHighScore: document.getElementById('new-high-score')
+            newHighScore: document.getElementById('new-high-score'),
+            // Multiplayer elements
+            multiplayerBtn: document.getElementById('multiplayer-btn'),
+            multiplayerLobby: document.getElementById('multiplayer-lobby'),
+            playerNameInput: document.getElementById('player-name'),
+            serverUrlInput: document.getElementById('server-url'),
+            connectBtn: document.getElementById('connect-btn'),
+            lobbyBackBtn: document.getElementById('lobby-back-btn'),
+            lobbyStatus: document.getElementById('lobby-status'),
+            lobbyStatusText: document.getElementById('lobby-status-text'),
+            lobbyPlayers: document.getElementById('lobby-players'),
+            playerList: document.getElementById('player-list'),
+            // Multiplayer game over
+            mpGameOver: document.getElementById('multiplayer-game-over'),
+            mpResultTitle: document.getElementById('mp-result-title'),
+            mpResultSubtitle: document.getElementById('mp-result-subtitle'),
+            mpFinalScores: document.getElementById('mp-final-scores'),
+            mpPlayAgainBtn: document.getElementById('mp-play-again-btn'),
+            mpMenuBtn: document.getElementById('mp-menu-btn')
         };
 
         // Settings state (load from localStorage)
         this.settings = {
             particles: localStorage.getItem('fps_particles') !== 'false',
-            particles: localStorage.getItem('fps_particles') !== 'false',
             flickerLights: localStorage.getItem('fps_flicker') !== 'false',
             hitmarkers: localStorage.getItem('fps_hitmarkers') !== 'false'
         };
 
+        // Load saved player name
+        const savedName = localStorage.getItem('fps_player_name');
+        if (savedName && this.elements.playerNameInput) {
+            this.elements.playerNameInput.value = savedName;
+        }
+
         // Apply initial toggle states
-        this.elements.particlesToggle.checked = this.settings.particles;
-        this.elements.flickerToggle.checked = this.settings.flickerLights;
-        this.elements.hitmarkerToggle.checked = this.settings.hitmarkers;
+        if (this.elements.particlesToggle) {
+            this.elements.particlesToggle.checked = this.settings.particles;
+        }
+        if (this.elements.flickerToggle) {
+            this.elements.flickerToggle.checked = this.settings.flickerLights;
+        }
+        if (this.elements.hitmarkerToggle) {
+            this.elements.hitmarkerToggle.checked = this.settings.hitmarkers;
+        }
 
         // Callbacks
         this.onStart = null;
         this.onRestart = null;
         this.onSettingsChange = null;
+        this.onMultiplayerConnect = null;
+        this.onMultiplayerDisconnect = null;
+        this.onMultiplayerPlayAgain = null;
 
         this.setupEventListeners();
     }
 
     setupEventListeners() {
-        this.elements.startBtn.addEventListener('click', () => {
+        this.elements.startBtn?.addEventListener('click', () => {
             if (this.onStart) {
                 this.onStart();
             }
         });
 
-        this.elements.restartBtn.addEventListener('click', () => {
+        this.elements.restartBtn?.addEventListener('click', () => {
             if (this.onRestart) {
                 this.onRestart();
             }
         });
 
         // Settings button
-        this.elements.settingsBtn.addEventListener('click', () => {
+        this.elements.settingsBtn?.addEventListener('click', () => {
             this.showSettings();
         });
 
         // Settings back button
-        this.elements.settingsBackBtn.addEventListener('click', () => {
+        this.elements.settingsBackBtn?.addEventListener('click', () => {
             this.hideSettings();
         });
 
         // Particles toggle
-        this.elements.particlesToggle.addEventListener('change', (e) => {
+        this.elements.particlesToggle?.addEventListener('change', (e) => {
             this.settings.particles = e.target.checked;
             localStorage.setItem('fps_particles', this.settings.particles);
             if (this.onSettingsChange) {
@@ -73,7 +105,7 @@ export class Menu {
         });
 
         // Flicker lights toggle
-        this.elements.flickerToggle.addEventListener('change', (e) => {
+        this.elements.flickerToggle?.addEventListener('change', (e) => {
             this.settings.flickerLights = e.target.checked;
             localStorage.setItem('fps_flicker', this.settings.flickerLights);
             if (this.onSettingsChange) {
@@ -82,23 +114,138 @@ export class Menu {
         });
 
         // Hitmarker toggle
-        this.elements.hitmarkerToggle.addEventListener('change', (e) => {
+        this.elements.hitmarkerToggle?.addEventListener('change', (e) => {
             this.settings.hitmarkers = e.target.checked;
             localStorage.setItem('fps_hitmarkers', this.settings.hitmarkers);
             if (this.onSettingsChange) {
                 this.onSettingsChange('hitmarkers', this.settings.hitmarkers);
             }
         });
+
+        // Multiplayer button
+        this.elements.multiplayerBtn?.addEventListener('click', () => {
+            this.showMultiplayerLobby();
+        });
+
+        // Lobby back button
+        this.elements.lobbyBackBtn?.addEventListener('click', () => {
+            this.hideMultiplayerLobby();
+            if (this.onMultiplayerDisconnect) {
+                this.onMultiplayerDisconnect();
+            }
+        });
+
+        // Connect button
+        this.elements.connectBtn?.addEventListener('click', () => {
+            this.handleConnect();
+        });
+
+        // Save player name on change
+        this.elements.playerNameInput?.addEventListener('change', (e) => {
+            localStorage.setItem('fps_player_name', e.target.value);
+        });
+
+        // Multiplayer game over buttons
+        this.elements.mpPlayAgainBtn?.addEventListener('click', () => {
+            if (this.onMultiplayerPlayAgain) {
+                this.onMultiplayerPlayAgain();
+            }
+        });
+
+        this.elements.mpMenuBtn?.addEventListener('click', () => {
+            this.hideMpGameOver();
+            this.showStart(0);
+            if (this.onMultiplayerDisconnect) {
+                this.onMultiplayerDisconnect();
+            }
+        });
+    }
+
+    handleConnect() {
+        const playerName = this.elements.playerNameInput?.value.trim() || 'Player';
+        const serverUrl = this.elements.serverUrlInput?.value.trim() || 'ws://localhost:8080';
+
+        // Save player name
+        localStorage.setItem('fps_player_name', playerName);
+
+        // Show connecting status
+        this.showLobbyStatus('Connecting to server...');
+
+        if (this.onMultiplayerConnect) {
+            this.onMultiplayerConnect(serverUrl, playerName);
+        }
     }
 
     showSettings() {
-        this.elements.startMenu.classList.add('hidden');
-        this.elements.settingsPanel.classList.remove('hidden');
+        this.elements.startMenu?.classList.add('hidden');
+        this.elements.settingsPanel?.classList.remove('hidden');
     }
 
     hideSettings() {
-        this.elements.settingsPanel.classList.add('hidden');
-        this.elements.startMenu.classList.remove('hidden');
+        this.elements.settingsPanel?.classList.add('hidden');
+        this.elements.startMenu?.classList.remove('hidden');
+    }
+
+    showMultiplayerLobby() {
+        this.elements.startMenu?.classList.add('hidden');
+        this.elements.multiplayerLobby?.classList.remove('hidden');
+        this.hideLobbyStatus();
+        this.hideLobbyPlayers();
+    }
+
+    hideMultiplayerLobby() {
+        this.elements.multiplayerLobby?.classList.add('hidden');
+        this.elements.startMenu?.classList.remove('hidden');
+    }
+
+    showLobbyStatus(text) {
+        if (this.elements.lobbyStatus) {
+            this.elements.lobbyStatus.classList.remove('hidden');
+        }
+        if (this.elements.lobbyStatusText) {
+            this.elements.lobbyStatusText.textContent = text;
+        }
+    }
+
+    hideLobbyStatus() {
+        this.elements.lobbyStatus?.classList.add('hidden');
+    }
+
+    showLobbyPlayers(players, localPlayerId) {
+        this.hideLobbyStatus();
+        if (this.elements.lobbyPlayers) {
+            this.elements.lobbyPlayers.classList.remove('hidden');
+        }
+        this.updatePlayerList(players, localPlayerId);
+    }
+
+    hideLobbyPlayers() {
+        this.elements.lobbyPlayers?.classList.add('hidden');
+    }
+
+    updatePlayerList(players, localPlayerId) {
+        if (!this.elements.playerList) return;
+
+        this.elements.playerList.innerHTML = '';
+        players.forEach(player => {
+            const li = document.createElement('li');
+            li.className = player.id === localPlayerId ? 'local' : '';
+
+            const colorDiv = document.createElement('div');
+            colorDiv.className = 'player-color';
+            colorDiv.style.backgroundColor = `#${player.color.toString(16).padStart(6, '0')}`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = player.name + (player.id === localPlayerId ? ' (You)' : '');
+
+            li.appendChild(colorDiv);
+            li.appendChild(nameSpan);
+            this.elements.playerList.appendChild(li);
+        });
+    }
+
+    showConnectionError(message) {
+        this.showLobbyStatus(message || 'Connection failed. Check server address.');
     }
 
     getSettings() {
@@ -106,42 +253,96 @@ export class Menu {
     }
 
     hideLoading() {
-        this.elements.loading.classList.add('hidden');
+        this.elements.loading?.classList.add('hidden');
     }
 
     showStart(highScore) {
-        this.elements.startMenu.classList.remove('hidden');
-        this.elements.gameOverMenu.classList.add('hidden');
-        this.elements.settingsPanel.classList.add('hidden');
-        this.elements.highScore.textContent = `High Score: ${highScore}`;
-    }
-
-    hideStart() {
-        this.elements.startMenu.classList.add('hidden');
-    }
-
-    showGameOver(score, time, isNewHighScore) {
-        this.elements.startMenu.classList.add('hidden');
-        this.elements.gameOverMenu.classList.remove('hidden');
-        this.elements.settingsPanel.classList.add('hidden');
-        this.elements.finalScore.textContent = `Score: ${score}`;
-        this.elements.finalTime.textContent = `Survived: ${time}s`;
-
-        if (isNewHighScore) {
-            this.elements.newHighScore.classList.remove('hidden');
-        } else {
-            this.elements.newHighScore.classList.add('hidden');
+        this.elements.startMenu?.classList.remove('hidden');
+        this.elements.gameOverMenu?.classList.add('hidden');
+        this.elements.settingsPanel?.classList.add('hidden');
+        this.elements.multiplayerLobby?.classList.add('hidden');
+        if (this.elements.highScore) {
+            this.elements.highScore.textContent = `RECORD // ${highScore}`;
         }
     }
 
+    hideStart() {
+        this.elements.startMenu?.classList.add('hidden');
+    }
+
+    showGameOver(score, time, isNewHighScore) {
+        this.elements.startMenu?.classList.add('hidden');
+        this.elements.gameOverMenu?.classList.remove('hidden');
+        this.elements.settingsPanel?.classList.add('hidden');
+        if (this.elements.finalScore) {
+            this.elements.finalScore.textContent = `Score: ${score}`;
+        }
+        if (this.elements.finalTime) {
+            this.elements.finalTime.textContent = `Survived: ${time}s`;
+        }
+
+        if (isNewHighScore) {
+            this.elements.newHighScore?.classList.remove('hidden');
+        } else {
+            this.elements.newHighScore?.classList.add('hidden');
+        }
+    }
+
+    showMpGameOver(data) {
+        this.hideAll();
+        this.elements.mpGameOver?.classList.remove('hidden');
+
+        // Set title based on outcome
+        if (this.elements.mpResultTitle) {
+            this.elements.mpResultTitle.textContent = data.reason || 'GAME OVER';
+            this.elements.mpResultTitle.dataset.text = data.reason || 'GAME OVER';
+        }
+
+        // Build scores display
+        if (this.elements.mpFinalScores && data.players) {
+            this.elements.mpFinalScores.innerHTML = '';
+
+            // Winner row
+            if (data.winner) {
+                const winnerRow = document.createElement('div');
+                winnerRow.className = 'winner-row';
+                winnerRow.innerHTML = `
+                    <span class="crown">👑</span>
+                    <span class="winner-name">${data.winner.name}</span>
+                    <span class="winner-kills">${data.winner.kills} KILLS</span>
+                `;
+                this.elements.mpFinalScores.appendChild(winnerRow);
+            }
+
+            // Other players
+            const sortedPlayers = [...data.players].sort((a, b) => b.kills - a.kills);
+            sortedPlayers.forEach((player, index) => {
+                const row = document.createElement('div');
+                row.className = 'score-row';
+                row.innerHTML = `
+                    <span class="rank">#${index + 1}</span>
+                    <span class="name">${player.name}</span>
+                    <span class="stats">${player.kills}K / ${player.deaths}D</span>
+                `;
+                this.elements.mpFinalScores.appendChild(row);
+            });
+        }
+    }
+
+    hideMpGameOver() {
+        this.elements.mpGameOver?.classList.add('hidden');
+    }
+
     hideGameOver() {
-        this.elements.gameOverMenu.classList.add('hidden');
+        this.elements.gameOverMenu?.classList.add('hidden');
     }
 
     hideAll() {
-        this.elements.startMenu.classList.add('hidden');
-        this.elements.gameOverMenu.classList.add('hidden');
-        this.elements.settingsPanel.classList.add('hidden');
-        this.elements.loading.classList.add('hidden');
+        this.elements.startMenu?.classList.add('hidden');
+        this.elements.gameOverMenu?.classList.add('hidden');
+        this.elements.settingsPanel?.classList.add('hidden');
+        this.elements.loading?.classList.add('hidden');
+        this.elements.multiplayerLobby?.classList.add('hidden');
+        this.elements.mpGameOver?.classList.add('hidden');
     }
 }

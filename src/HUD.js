@@ -14,10 +14,17 @@ export class HUD {
             weaponName: document.getElementById('weapon-name'),
             ammoCount: document.getElementById('ammo-count'),
             reloadIndicator: document.getElementById('reload-indicator'),
-            ammoCount: document.getElementById('ammo-count'),
-            reloadIndicator: document.getElementById('reload-indicator'),
             reloadProgress: document.querySelector('#reload-indicator .reload-progress'),
-            damageFlash: document.getElementById('damage-flash')
+            damageFlash: document.getElementById('damage-flash'),
+            // Multiplayer elements
+            scoreboard: document.getElementById('scoreboard'),
+            scoreboardRows: document.getElementById('scoreboard-rows'),
+            killFeed: document.getElementById('kill-feed'),
+            respawnOverlay: document.getElementById('respawn-overlay'),
+            respawnTimer: document.getElementById('respawn-timer'),
+            respawnKillerName: document.getElementById('respawn-killer-name'),
+            playerCount: document.getElementById('player-count'),
+            playerCountText: document.getElementById('player-count-text')
         };
 
         this.startTime = 0;
@@ -27,11 +34,50 @@ export class HUD {
         // Edge indicator settings
         this.indicatorPool = [];
         this.maxIndicators = 10;
-        this.indicatorPool = [];
-        this.maxIndicators = 10;
-        this.edgePadding = 50; // Distance from screen edge
+        this.edgePadding = 50;
 
         this.hitmarkerEnabled = true;
+
+        // Multiplayer state
+        this.isMultiplayer = false;
+        this.localPlayerId = null;
+
+        // Setup scoreboard toggle
+        this.setupScoreboardListeners();
+    }
+
+    setupScoreboardListeners() {
+        // Tab to show/hide scoreboard
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' && this.isMultiplayer) {
+                e.preventDefault();
+                this.showScoreboard();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Tab') {
+                this.hideScoreboard();
+            }
+        });
+    }
+
+    setMultiplayerMode(enabled, localPlayerId = null) {
+        this.isMultiplayer = enabled;
+        this.localPlayerId = localPlayerId;
+
+        // Show/hide multiplayer-specific elements
+        if (this.elements.playerCount) {
+            this.elements.playerCount.classList.toggle('hidden', !enabled);
+        }
+
+        // Hide wave-based stats in multiplayer
+        if (this.elements.wave) {
+            this.elements.wave.style.display = enabled ? 'none' : 'block';
+        }
+        if (this.elements.enemies) {
+            this.elements.enemies.style.display = enabled ? 'none' : 'block';
+        }
     }
 
     setHitmarkerEnabled(enabled) {
@@ -74,44 +120,30 @@ export class HUD {
         }, 100);
     }
 
-    /**
-     * Show hitmarker when hitting an enemy
-     * @param {boolean} isHeadshot - Whether this was a headshot
-     */
     showHitmarker(isHeadshot = false) {
         if (!this.hitmarkerEnabled) return;
 
         const hitmarker = this.elements.hitmarker;
+        if (!hitmarker) return;
 
-        // Clear any existing timeout
         if (this.hitmarkerTimeout) {
             clearTimeout(this.hitmarkerTimeout);
         }
 
-        // Reset classes
         hitmarker.classList.remove('show', 'headshot', 'hidden');
-
-        // Force reflow for animation restart
         void hitmarker.offsetWidth;
 
-        // Add appropriate classes
         hitmarker.classList.add('show');
         if (isHeadshot) {
             hitmarker.classList.add('headshot');
         }
 
-        // Hide after animation
         this.hitmarkerTimeout = setTimeout(() => {
             hitmarker.classList.remove('show', 'headshot');
             hitmarker.classList.add('hidden');
         }, isHeadshot ? 250 : 150);
     }
 
-    /**
-     * Update reload indicator progress
-     * @param {number} progress - 0 to 1 progress value
-     * @param {boolean} isReloading - Whether currently reloading
-     */
     updateReloadIndicator(progress, isReloading) {
         const indicator = this.elements.reloadIndicator;
         const progressEl = this.elements.reloadProgress;
@@ -120,7 +152,6 @@ export class HUD {
 
         if (isReloading) {
             indicator.classList.remove('hidden');
-            // Update conic-gradient progress
             const percent = Math.round(progress * 100);
             progressEl.style.setProperty('--progress', `${percent}%`);
         } else {
@@ -129,48 +160,56 @@ export class HUD {
     }
 
     show() {
-        this.elements.hud.classList.remove('hidden');
+        this.elements.hud?.classList.remove('hidden');
         this.startTime = performance.now();
     }
 
     hide() {
-        this.elements.hud.classList.add('hidden');
+        this.elements.hud?.classList.add('hidden');
     }
 
     updateHealth(health, maxHealth) {
         const percent = (health / maxHealth) * 100;
-        this.elements.healthBar.style.width = `${percent}%`;
-        this.elements.healthText.textContent = Math.ceil(health);
-
-        if (percent < 30) {
-            this.elements.healthBar.style.background = '#ff3333';
-        } else {
-            this.elements.healthBar.style.background = '#ffffff';
+        if (this.elements.healthBar) {
+            this.elements.healthBar.style.width = `${percent}%`;
+            if (percent < 30) {
+                this.elements.healthBar.style.background = '#ff3333';
+            } else {
+                this.elements.healthBar.style.background = '#ffffff';
+            }
+        }
+        if (this.elements.healthText) {
+            this.elements.healthText.textContent = Math.ceil(health);
         }
     }
 
     updateWave(wave) {
-        this.elements.wave.textContent = `Wave: ${wave}`;
+        if (this.elements.wave) {
+            this.elements.wave.textContent = `Wave: ${wave}`;
+        }
     }
 
     updateEnemies(count) {
-        this.elements.enemies.textContent = `Enemies: ${count}`;
+        if (this.elements.enemies) {
+            this.elements.enemies.textContent = `Enemies: ${count}`;
+        }
     }
 
     updateTimer() {
         const elapsed = Math.floor((performance.now() - this.startTime) / 1000);
-        this.elements.timer.textContent = `Time: ${elapsed}s`;
+        if (this.elements.timer) {
+            this.elements.timer.textContent = `Time: ${elapsed}s`;
+        }
         return elapsed;
     }
 
     updateScore(score) {
         this.currentScore = score;
-        this.elements.score.textContent = `Score: ${score}`;
+        if (this.elements.score) {
+            this.elements.score.textContent = `Score: ${score}`;
+        }
     }
 
-    /**
-     * Update screen-edge enemy indicators
-     */
     updateEnemyIndicators(playerPos, playerYaw, enemies) {
         const aliveEnemies = enemies.filter(e => !e.isDead);
         const screenW = window.innerWidth;
@@ -178,28 +217,22 @@ export class HUD {
         const centerX = screenW / 2;
         const centerY = screenH / 2;
 
-        // Ensure we have enough indicators
         while (this.indicatorPool.length < Math.min(aliveEnemies.length, this.maxIndicators)) {
             const indicator = document.createElement('div');
             indicator.className = 'edge-indicator';
-            this.elements.indicators.appendChild(indicator);
+            this.elements.indicators?.appendChild(indicator);
             this.indicatorPool.push(indicator);
         }
 
-        // Hide all first
         this.indicatorPool.forEach(ind => ind.style.display = 'none');
 
-        // Sort by distance
         const enemyData = aliveEnemies.map(enemy => {
             const pos = enemy.mesh.position;
             const dx = pos.x - playerPos.x;
             const dz = pos.z - playerPos.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
-
-            // Calculate angle relative to player view
             const worldAngle = Math.atan2(dx, -dz);
             const relativeAngle = worldAngle + playerYaw;
-
             return { enemy, distance, relativeAngle };
         }).sort((a, b) => a.distance - b.distance);
 
@@ -209,50 +242,37 @@ export class HUD {
             const { enemy, distance, relativeAngle } = enemyData[i];
             const indicator = this.indicatorPool[i];
 
-            // Calculate direction from center of screen
             const dirX = Math.sin(relativeAngle);
             const dirY = -Math.cos(relativeAngle);
 
-            // Find intersection with screen edge
             let edgeX, edgeY;
             const maxX = centerX - this.edgePadding;
             const maxY = centerY - this.edgePadding;
 
-            // Calculate where the line from center intersects screen edge
             const absX = Math.abs(dirX);
             const absY = Math.abs(dirY);
 
             if (absX * maxY > absY * maxX) {
-                // Hits left or right edge
                 edgeX = centerX + Math.sign(dirX) * maxX;
                 edgeY = centerY + (dirY / absX) * maxX;
             } else {
-                // Hits top or bottom edge
                 edgeX = centerX + (dirX / absY) * maxY;
                 edgeY = centerY + Math.sign(dirY) * maxY;
             }
 
-            // Clamp to screen bounds
             edgeX = Math.max(this.edgePadding, Math.min(screenW - this.edgePadding, edgeX));
             edgeY = Math.max(this.edgePadding, Math.min(screenH - this.edgePadding, edgeY));
 
-            // Rotation to point toward enemy (arrow points in direction)
             const rotation = (relativeAngle * 180 / Math.PI);
-
-            // Scale based on distance (closer = bigger)
-            // Range: 1.2 at distance 0, down to 0.5 at distance 20+
             const scale = Math.max(0.5, Math.min(1.2, 1.4 - distance * 0.045));
 
-            // Show and position
             indicator.style.display = 'block';
             indicator.style.left = `${edgeX}px`;
             indicator.style.top = `${edgeY}px`;
             indicator.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale})`;
 
-            // Reset classes
             indicator.className = 'edge-indicator';
 
-            // Distance class
             if (distance < 6) {
                 indicator.classList.add('close');
             } else if (distance < 12) {
@@ -261,7 +281,6 @@ export class HUD {
                 indicator.classList.add('far');
             }
 
-            // Type class
             if (enemy.type === 'RUNNER') {
                 indicator.classList.add('runner');
             } else if (enemy.type === 'TANK') {
@@ -280,6 +299,127 @@ export class HUD {
         return Math.floor((performance.now() - this.startTime) / 1000);
     }
 
+    // =========================================
+    // MULTIPLAYER HUD METHODS
+    // =========================================
+
+    updatePlayerCount(count) {
+        if (this.elements.playerCountText) {
+            this.elements.playerCountText.textContent = `Players: ${count}`;
+        }
+    }
+
+    showScoreboard() {
+        this.elements.scoreboard?.classList.remove('hidden');
+    }
+
+    hideScoreboard() {
+        this.elements.scoreboard?.classList.add('hidden');
+    }
+
+    updateScoreboard(scores, localPlayerId) {
+        if (!this.elements.scoreboardRows) return;
+
+        this.elements.scoreboardRows.innerHTML = '';
+
+        scores.forEach(player => {
+            const row = document.createElement('div');
+            row.className = 'scoreboard-row';
+            if (player.id === localPlayerId) {
+                row.classList.add('local');
+            }
+
+            const kd = player.deaths > 0
+                ? (player.kills / player.deaths).toFixed(2)
+                : player.kills.toFixed(2);
+
+            const colorHex = player.color ?
+                `#${player.color.toString(16).padStart(6, '0')}` : '#ffffff';
+
+            row.innerHTML = `
+                <div class="player-name">
+                    <div class="player-color" style="background-color: ${colorHex}"></div>
+                    <span>${player.name}</span>
+                </div>
+                <div class="player-kills">${player.kills}</div>
+                <div class="player-deaths">${player.deaths}</div>
+                <div class="player-kd">${kd}</div>
+            `;
+
+            this.elements.scoreboardRows.appendChild(row);
+        });
+    }
+
+    addKillFeedEntry(killer, victim, isHeadshot, isLocalKill, isLocalDeath) {
+        if (!this.elements.killFeed) return;
+
+        const entry = document.createElement('div');
+        entry.className = 'kill-entry';
+        if (isHeadshot) entry.classList.add('headshot');
+        if (isLocalKill) entry.classList.add('local-kill');
+        if (isLocalDeath) entry.classList.add('local-death');
+
+        const icon = isHeadshot ? '💀' : '☠';
+
+        entry.innerHTML = `
+            <span class="killer">${killer}</span>
+            <span class="kill-icon">${icon}</span>
+            <span class="victim">${victim}</span>
+        `;
+
+        this.elements.killFeed.insertBefore(entry, this.elements.killFeed.firstChild);
+
+        // Limit kill feed entries
+        while (this.elements.killFeed.children.length > 5) {
+            this.elements.killFeed.removeChild(this.elements.killFeed.lastChild);
+        }
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (entry.parentNode) {
+                entry.style.opacity = '0';
+                entry.style.transform = 'translateX(100%)';
+                setTimeout(() => entry.remove(), 300);
+            }
+        }, 5000);
+    }
+
+    clearKillFeed() {
+        if (this.elements.killFeed) {
+            this.elements.killFeed.innerHTML = '';
+        }
+    }
+
+    showRespawnOverlay(countdown, killerName = 'Enemy') {
+        console.log('HUD.showRespawnOverlay called with countdown:', countdown);
+        if (this.elements.respawnOverlay) {
+            this.elements.respawnOverlay.classList.remove('hidden');
+            this.elements.respawnOverlay.style.display = 'flex'; // Reset display
+        }
+        if (this.elements.respawnTimer) {
+            this.elements.respawnTimer.textContent = Math.ceil(countdown);
+        }
+        if (this.elements.respawnKillerName) {
+            this.elements.respawnKillerName.textContent = killerName;
+        }
+    }
+
+    hideRespawnOverlay() {
+        console.log('HUD.hideRespawnOverlay called');
+        if (this.elements.respawnOverlay) {
+            this.elements.respawnOverlay.classList.add('hidden');
+            // Also set display directly as backup
+            this.elements.respawnOverlay.style.display = 'none';
+            console.log('Respawn overlay hidden');
+        }
+    }
+
+    updateRespawnTimer(countdown) {
+        if (this.elements.respawnTimer) {
+            this.elements.respawnTimer.textContent = Math.ceil(countdown);
+        }
+    }
+
     reset() {
         this.startTime = performance.now();
         this.currentScore = 0;
@@ -288,5 +428,17 @@ export class HUD {
         this.updateEnemies(0);
         this.updateScore(0);
         this.clearEnemyIndicators();
+        this.clearKillFeed();
+        this.hideRespawnOverlay();
+        this.hideScoreboard();
+    }
+
+    resetMultiplayer() {
+        this.reset();
+        this.isMultiplayer = false;
+        this.localPlayerId = null;
+        if (this.elements.playerCount) {
+            this.elements.playerCount.classList.add('hidden');
+        }
     }
 }

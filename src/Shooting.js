@@ -533,6 +533,9 @@ export class Shooting {
     }
 
     tryShoot() {
+        // Check if player is dead (multiplayer respawn state)
+        if (this.player && this.player.isDead) return false;
+
         if (this.isReloading || this.isSwitchingWeapon) return false;
         if (this.ammo <= 0) {
             this.reload();
@@ -576,15 +579,27 @@ export class Shooting {
                     : this.weapon.damage;
 
                 let hitObject = hit.object;
-                while (hitObject.parent && !hitObject.userData.enemy) {
+
+                // Walk up the parent chain to find the root object with enemy/player data
+                while (hitObject.parent && !hitObject.userData.enemy && !hitObject.userData.isPlayer) {
                     hitObject = hitObject.parent;
                 }
 
-                if (hitObject.userData.enemy && this.onHit) {
-                    this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
+                // Handle remote player hits
+                if (hitObject.userData.isPlayer && this.onHit) {
+                    // Pass the player data for multiplayer hit handling
+                    this.onHit({
+                        playerId: hitObject.userData.playerId,
+                        isPlayer: true,
+                        remotePlayer: hitObject.userData.remotePlayer
+                    }, damage, hit.point, isHeadshot);
+                    this.createHitEffect(hit.point, isHeadshot);
                 }
-
-                this.createHitEffect(hit.point, isHeadshot);
+                // Handle enemy hits (single player mode)
+                else if (hitObject.userData.enemy && this.onHit) {
+                    this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
+                    this.createHitEffect(hit.point, isHeadshot);
+                }
             }
         }
 
