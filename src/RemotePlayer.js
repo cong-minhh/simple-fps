@@ -108,12 +108,18 @@ export class RemotePlayer {
         const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
         leftLeg.position.set(-0.12, 0.35, 0);
         leftLeg.castShadow = true;
+        leftLeg.userData.isPlayer = true;
+        leftLeg.userData.playerId = this.id;
+        leftLeg.userData.bodyPart = 'leg';
         this.mesh.add(leftLeg);
         this.leftLegMesh = leftLeg;
 
         const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
         rightLeg.position.set(0.12, 0.35, 0);
         rightLeg.castShadow = true;
+        rightLeg.userData.isPlayer = true;
+        rightLeg.userData.playerId = this.id;
+        rightLeg.userData.bodyPart = 'leg';
         this.mesh.add(rightLeg);
         this.rightLegMesh = rightLeg;
 
@@ -129,6 +135,7 @@ export class RemotePlayer {
         torso.castShadow = true;
         torso.userData.isPlayer = true;
         torso.userData.playerId = this.id;
+        torso.userData.bodyPart = 'torso';
         this.upperBodyGroup.add(torso);
         this.torsoMesh = torso;
 
@@ -141,6 +148,7 @@ export class RemotePlayer {
         head.userData.isHead = true;
         head.userData.isPlayer = true;
         head.userData.playerId = this.id;
+        head.userData.bodyPart = 'head';
         this.upperBodyGroup.add(head);
         this.headMesh = head;
 
@@ -163,12 +171,18 @@ export class RemotePlayer {
         // Left arm
         const leftArm = new THREE.Mesh(armGeometry, armMaterial);
         leftArm.position.set(-0.3, 0, -0.05);
+        leftArm.userData.isPlayer = true;
+        leftArm.userData.playerId = this.id;
+        leftArm.userData.bodyPart = 'arm';
         this.armsGroup.add(leftArm);
         this.leftArmMesh = leftArm;
 
         // Right arm (weapon arm)
         const rightArm = new THREE.Mesh(armGeometry, armMaterial);
         rightArm.position.set(0.3, 0, -0.05);
+        rightArm.userData.isPlayer = true;
+        rightArm.userData.playerId = this.id;
+        rightArm.userData.bodyPart = 'arm';
         this.armsGroup.add(rightArm);
         this.rightArmMesh = rightArm;
 

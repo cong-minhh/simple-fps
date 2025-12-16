@@ -103,6 +103,7 @@ export class Shooting {
     constructor(camera, scene) {
         this.camera = camera;
         this.scene = scene;
+        this.arena = null; // Set via setArena() for wall collision checking
 
         // Current weapon
         this.currentWeaponKey = 'RIFLE';
@@ -389,6 +390,10 @@ export class Shooting {
         this.player = player;
     }
 
+    setArena(arena) {
+        this.arena = arena;
+    }
+
     update(dt) {
         const now = performance.now();
 
@@ -556,6 +561,14 @@ export class Shooting {
         this.ammo--;
         this.shotsFired++;
 
+        // Body part damage multipliers
+        const BODY_PART_MULTIPLIERS = {
+            head: 3.0,   // Headshot
+            torso: 1.0,  // Base damage
+            arm: 0.7,    // Reduced
+            leg: 0.6     // Most reduced
+        };
+
         // Calculate spread (reduced when ADS)
         const spread = this.isAiming ? this.weapon.adsSpread : this.weapon.spread;
 
@@ -569,36 +582,65 @@ export class Shooting {
 
             this.raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), this.camera);
 
-            const intersects = this.raycaster.intersectObjects(this.enemyMeshes, true);
+            // Get ALL intersections to check for walls
+            const allObjects = [...this.enemyMeshes];
+
+            // Add arena/scene objects for wall checking if available
+            if (this.arena && this.arena.mesh) {
+                allObjects.push(this.arena.mesh);
+            }
+
+            const intersects = this.raycaster.intersectObjects(allObjects, true);
 
             if (intersects.length > 0) {
-                const hit = intersects[0];
-                const isHeadshot = hit.object.userData.isHead === true;
-                const damage = isHeadshot
-                    ? this.weapon.damage * this.weapon.headMultiplier
-                    : this.weapon.damage;
+                // Find the first hit that is either a player/enemy OR a wall
+                let playerHit = null;
+                let wallHit = null;
 
-                let hitObject = hit.object;
+                for (const hit of intersects) {
+                    // Check if this is a player/enemy hit
+                    let checkObj = hit.object;
+                    while (checkObj.parent && !checkObj.userData.enemy && !checkObj.userData.isPlayer) {
+                        checkObj = checkObj.parent;
+                    }
 
-                // Walk up the parent chain to find the root object with enemy/player data
-                while (hitObject.parent && !hitObject.userData.enemy && !hitObject.userData.isPlayer) {
-                    hitObject = hitObject.parent;
+                    if (checkObj.userData.isPlayer || checkObj.userData.enemy) {
+                        if (!playerHit) playerHit = { hit, rootObj: checkObj };
+                    } else {
+                        // This is a wall/obstacle
+                        if (!wallHit) wallHit = hit;
+                    }
+
+                    // If we found both, we can stop
+                    if (playerHit && wallHit) break;
                 }
 
-                // Handle remote player hits
-                if (hitObject.userData.isPlayer && this.onHit) {
-                    // Pass the player data for multiplayer hit handling
-                    this.onHit({
-                        playerId: hitObject.userData.playerId,
-                        isPlayer: true,
-                        remotePlayer: hitObject.userData.remotePlayer
-                    }, damage, hit.point, isHeadshot);
-                    this.createHitEffect(hit.point, isHeadshot);
-                }
-                // Handle enemy hits (single player mode)
-                else if (hitObject.userData.enemy && this.onHit) {
-                    this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
-                    this.createHitEffect(hit.point, isHeadshot);
+                // Only register hit if player is closer than any wall
+                if (playerHit && (!wallHit || playerHit.hit.distance < wallHit.distance)) {
+                    const hit = playerHit.hit;
+                    const hitObject = playerHit.rootObj;
+
+                    // Determine body part and calculate damage
+                    const bodyPart = hit.object.userData.bodyPart || 'torso';
+                    const isHeadshot = bodyPart === 'head';
+                    const multiplier = BODY_PART_MULTIPLIERS[bodyPart] || 1.0;
+                    const damage = Math.round(this.weapon.damage * multiplier);
+
+                    // Handle remote player hits
+                    if (hitObject.userData.isPlayer && this.onHit) {
+                        this.onHit({
+                            playerId: hitObject.userData.playerId,
+                            isPlayer: true,
+                            remotePlayer: hitObject.userData.remotePlayer,
+                            bodyPart: bodyPart
+                        }, damage, hit.point, isHeadshot);
+                        this.createHitEffect(hit.point, isHeadshot);
+                    }
+                    // Handle enemy hits (single player mode)
+                    else if (hitObject.userData.enemy && this.onHit) {
+                        this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
+                        this.createHitEffect(hit.point, isHeadshot);
+                    }
                 }
             }
         }

@@ -52,6 +52,7 @@ class Game {
         this.waveManager.initPathfinding();
         this.waveManager.initProjectiles(this.scene);
         this.shooting.setPlayer(this.player);
+        this.shooting.setArena(this.arena);
 
         // Connect projectile manager to player for hit detection
         if (this.waveManager.projectileManager) {
