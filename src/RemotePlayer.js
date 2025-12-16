@@ -264,10 +264,15 @@ export class RemotePlayer {
             opacity: 0
         });
         const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-        flash.position.set(0, 0, -(config.length + config.length * 0.4));
+        // Muzzle position at barrel tip
+        const muzzleZ = -(config.length + config.length * 0.4);
+        flash.position.set(0, 0, muzzleZ);
         this.gunGroup.add(flash);
         this.muzzleFlash = flash;
         this.muzzleFlashMaterial = flashMaterial;
+
+        // Store muzzle offset for bullet tracer origin
+        this.muzzleOffset = new THREE.Vector3(0, 0, muzzleZ);
     }
 
     createNameTag() {
@@ -540,6 +545,20 @@ export class RemotePlayer {
     getPosition() { return this.position; }
     getMesh() { return this.mesh; }
     getHeadMesh() { return this.headMesh; }
+
+    // Get the muzzle position in world coordinates for bullet tracers
+    getMuzzleWorldPosition() {
+        if (this.gunGroup && this.muzzleOffset) {
+            const muzzleWorld = new THREE.Vector3();
+            // Transform muzzle offset from gun local space to world space
+            this.gunGroup.localToWorld(muzzleWorld.copy(this.muzzleOffset));
+            return muzzleWorld;
+        }
+        // Fallback: use player position + forward offset
+        const fallback = this.position.clone();
+        fallback.y += 1.2; // Chest height
+        return fallback;
+    }
 
     dispose() {
         this.scene.remove(this.mesh);

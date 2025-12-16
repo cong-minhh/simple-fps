@@ -161,15 +161,20 @@ export class NetworkManager {
         });
     }
 
-    sendShoot(weapon, direction) {
+    sendShoot(weapon, bulletData) {
         this.send({
             type: 'shoot',
             weapon,
-            direction: {
-                x: direction.x,
-                y: direction.y,
-                z: direction.z
-            }
+            origin: bulletData.origin ? {
+                x: bulletData.origin.x,
+                y: bulletData.origin.y,
+                z: bulletData.origin.z
+            } : null,
+            target: bulletData.target ? {
+                x: bulletData.target.x,
+                y: bulletData.target.y,
+                z: bulletData.target.z
+            } : null
         });
     }
 

@@ -373,13 +373,14 @@ class GameServer {
         const player = room.players.get(playerId);
         if (!player || !player.isAlive) return;
 
-        // Broadcast shoot to others
+        // Broadcast shoot to others with bullet trajectory data
         room.broadcast({
             type: 'player_shoot',
             playerId,
             weapon: message.weapon,
             position: player.position,
-            direction: message.direction
+            origin: message.origin,  // Bullet start position (muzzle)
+            target: message.target   // Bullet end position (hit point or max range)
         }, playerId);
     }
 

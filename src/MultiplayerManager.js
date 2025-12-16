@@ -1,4 +1,5 @@
 // MultiplayerManager.js - Manages multiplayer game state and remote players
+import * as THREE from 'three';
 import { RemotePlayer } from './RemotePlayer.js';
 
 export class MultiplayerManager {
@@ -15,6 +16,7 @@ export class MultiplayerManager {
         this.localPlayer = null;
         this.localPlayerId = null;
         this.shooting = null; // For reading ADS, reload, weapon state
+        this.bulletTracerManager = null; // For rendering remote player bullet tracers
 
         // Game state
         this.gameStarted = false;
@@ -106,11 +108,20 @@ export class MultiplayerManager {
             }
         });
 
-        // Shoot events
+        // Shoot events - now with bullet tracer data
         this.network.on('player_shoot', (data) => {
             const player = this.remotePlayers.get(data.playerId);
             if (player) {
                 player.showShootEffect();
+
+                // Render bullet tracer from the remote player's actual gun muzzle
+                if (this.bulletTracerManager && data.target) {
+                    // Use the remote player's gun muzzle position (not the sent origin)
+                    // This ensures the tracer comes from the correct position on their model
+                    const origin = player.getMuzzleWorldPosition();
+                    const target = new THREE.Vector3(data.target.x, data.target.y, data.target.z);
+                    this.bulletTracerManager.fire(origin, target, data.weapon || 'RIFLE');
+                }
             }
         });
 
@@ -363,9 +374,13 @@ export class MultiplayerManager {
         this.network.sendHit(targetPlayerId, damage, isHeadshot);
     }
 
-    // Called when local player shoots
-    handleLocalShoot(weapon, direction) {
-        this.network.sendShoot(weapon, direction);
+    // Called when local player shoots - pass bullet trajectory data
+    handleLocalShoot(weapon, bulletData) {
+        this.network.sendShoot(weapon, bulletData);
+    }
+
+    setBulletTracerManager(manager) {
+        this.bulletTracerManager = manager;
     }
 
     getPlayerCount() {

@@ -744,7 +744,9 @@ h1 {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lobby-status p {
@@ -807,8 +809,15 @@ h1 {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Scoreboard */
@@ -848,10 +857,24 @@ h1 {
   color: var(--dim-color);
 }
 
-.sb-name { flex: 2; }
-.sb-kills { flex: 1; text-align: center; }
-.sb-deaths { flex: 1; text-align: center; }
-.sb-kd { flex: 1; text-align: center; }
+.sb-name {
+  flex: 2;
+}
+
+.sb-kills {
+  flex: 1;
+  text-align: center;
+}
+
+.sb-deaths {
+  flex: 1;
+  text-align: center;
+}
+
+.sb-kd {
+  flex: 1;
+  text-align: center;
+}
 
 .scoreboard-row {
   display: flex;
@@ -926,6 +949,7 @@ h1 {
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -979,8 +1003,15 @@ h1 {
 }
 
 @keyframes respawnPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.02); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.02);
+  }
 }
 
 .respawn-content h2 {

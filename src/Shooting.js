@@ -159,6 +159,12 @@ export class Shooting {
         // Enemy meshes
         this.enemyMeshes = [];
 
+        // Bullet tracer manager (set externally)
+        this.bulletTracerManager = null;
+
+        // Last bullet trajectory data for network sync
+        this.lastBulletData = { origin: null, target: null };
+
         // Gun model
         this.gunModel = null;
         this.defaultGunPos = new THREE.Vector3(0.25, -0.2, -0.4);
@@ -354,6 +360,9 @@ export class Shooting {
         this.muzzleFlashSprite.visible = false;
         gunGroup.add(this.muzzleFlashSprite);
 
+        // Store muzzle position for bullet tracer reference
+        gunGroup.userData.muzzleOffset = new THREE.Vector3(0, 0.02, barrelTipZ);
+
         // Position gun
         gunGroup.position.copy(this.defaultGunPos);
         gunGroup.rotation.y = -0.1;
@@ -392,6 +401,10 @@ export class Shooting {
 
     setArena(arena) {
         this.arena = arena;
+    }
+
+    setBulletTracerManager(manager) {
+        this.bulletTracerManager = manager;
     }
 
     update(dt) {
@@ -575,6 +588,22 @@ export class Shooting {
         // Shotgun fires multiple pellets
         const pellets = this.weapon.pellets || 1;
 
+        // Calculate muzzle position for network sync (use first pellet only for network)
+        let muzzlePos = null;
+        if (this.gunModel && this.gunModel.userData.muzzleOffset) {
+            muzzlePos = new THREE.Vector3();
+            this.gunModel.localToWorld(muzzlePos.copy(this.gunModel.userData.muzzleOffset));
+        } else {
+            // Fallback: use camera position offset
+            muzzlePos = this.camera.position.clone();
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyQuaternion(this.camera.quaternion);
+            muzzlePos.add(forward.multiplyScalar(0.5));
+        }
+
+        // Reset last bullet data for this shot
+        this.lastBulletData = { origin: muzzlePos.clone(), target: null };
+
         for (let p = 0; p < pellets; p++) {
             // Apply spread
             const spreadX = (Math.random() - 0.5) * spread;
@@ -650,6 +679,21 @@ export class Shooting {
                     const hit = playerHit.hit;
                     const hitObject = playerHit.rootObj;
 
+                    // Fire visual tracer to hit point
+                    if (this.bulletTracerManager) {
+                        this.bulletTracerManager.fireFromCamera(
+                            hit.point,
+                            this.gunModel,
+                            this.currentWeaponKey,
+                            this.raycaster.far,
+                            this.raycaster.ray.direction
+                        );
+                    }
+                    // Store target for network sync (first pellet only)
+                    if (p === 0) {
+                        this.lastBulletData.target = hit.point.clone();
+                    }
+
                     // Determine body part and calculate damage
                     const bodyPart = hit.object.userData.bodyPart || 'torso';
                     const isHeadshot = bodyPart === 'head';
@@ -671,6 +715,57 @@ export class Shooting {
                         this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
                         this.createHitEffect(hit.point, isHeadshot);
                     }
+                } else if (wallHit) {
+                    // Hit a wall - fire tracer to wall hit point
+                    if (this.bulletTracerManager) {
+                        this.bulletTracerManager.fireFromCamera(
+                            wallHit.point,
+                            this.gunModel,
+                            this.currentWeaponKey,
+                            this.raycaster.far,
+                            this.raycaster.ray.direction
+                        );
+                    }
+                    // Store target for network sync (first pellet only)
+                    if (p === 0) {
+                        this.lastBulletData.target = wallHit.point.clone();
+                    }
+                } else {
+                    // No valid hit found in intersects - fire tracer along ray direction
+                    if (this.bulletTracerManager) {
+                        this.bulletTracerManager.fireFromCamera(
+                            null,
+                            this.gunModel,
+                            this.currentWeaponKey,
+                            this.raycaster.far,
+                            this.raycaster.ray.direction
+                        );
+                    }
+                    // Store target for network sync (first pellet only) - use max range
+                    if (p === 0) {
+                        const targetPos = this.lastBulletData.origin.clone().add(
+                            this.raycaster.ray.direction.clone().normalize().multiplyScalar(this.raycaster.far)
+                        );
+                        this.lastBulletData.target = targetPos;
+                    }
+                }
+            } else {
+                // No intersects at all - fire tracer along ray direction
+                if (this.bulletTracerManager) {
+                    this.bulletTracerManager.fireFromCamera(
+                        null,
+                        this.gunModel,
+                        this.currentWeaponKey,
+                        this.raycaster.far,
+                        this.raycaster.ray.direction
+                    );
+                }
+                // Store target for network sync (first pellet only) - use max range
+                if (p === 0) {
+                    const targetPos = this.lastBulletData.origin.clone().add(
+                        this.raycaster.ray.direction.clone().normalize().multiplyScalar(this.raycaster.far)
+                    );
+                    this.lastBulletData.target = targetPos;
                 }
             }
         }

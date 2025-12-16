@@ -10,6 +10,7 @@ import { Score } from './Score.js';
 import { Audio } from './Audio.js';
 import { NetworkManager } from './NetworkManager.js';
 import { MultiplayerManager } from './MultiplayerManager.js';
+import { BulletTracerManager } from './BulletTracer.js';
 
 // Game states
 const STATES = {
@@ -53,6 +54,10 @@ class Game {
         this.waveManager.initProjectiles(this.scene);
         this.shooting.setPlayer(this.player);
         this.shooting.setArena(this.arena);
+
+        // Initialize bullet tracer system for visual feedback
+        this.bulletTracerManager = new BulletTracerManager(this.scene, this.camera);
+        this.shooting.setBulletTracerManager(this.bulletTracerManager);
 
         // Connect projectile manager to player for hit detection
         if (this.waveManager.projectileManager) {
@@ -259,6 +264,7 @@ class Game {
                 );
                 this.multiplayerManager.setLocalPlayer(this.player);
                 this.multiplayerManager.setShooting(this.shooting);
+                this.multiplayerManager.setBulletTracerManager(this.bulletTracerManager);
                 this.multiplayerManager.localPlayerId = result.playerId;
 
                 // Setup multiplayer manager callbacks BEFORE adding players
@@ -447,13 +453,11 @@ class Game {
         this.shooting.onShoot = () => {
             if (origShootCallback) origShootCallback();
 
-            // Send shoot event to network
+            // Send shoot event to network with bullet trajectory data
             if (this.multiplayerManager && this.network.isConnected) {
-                const direction = new THREE.Vector3();
-                this.camera.getWorldDirection(direction);
                 this.multiplayerManager.handleLocalShoot(
                     this.shooting.currentWeaponKey,
-                    direction
+                    this.shooting.lastBulletData
                 );
             }
         };
@@ -513,6 +517,7 @@ class Game {
     updateSoloGame(dt, time) {
         this.player.update(dt);
         this.shooting.update(dt);
+        this.bulletTracerManager.update(dt);
 
         if (this.player.isDead) {
             this.gameOver();
@@ -545,6 +550,7 @@ class Game {
         // Update player
         this.player.update(dt);
         this.shooting.update(dt);
+        this.bulletTracerManager.update(dt);
 
         // Update arena (no hazard damage in MP to keep it simple)
         this.arena.update(dt, this.player.getPosition());
