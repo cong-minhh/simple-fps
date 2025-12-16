@@ -1184,3 +1184,61 @@ h1 {
   pointer-events: none;
   z-index: 150;
 }
+
+/* =========================================
+   PAUSE MENU STYLES
+   ========================================= */
+
+#pause-menu {
+  z-index: 300;
+}
+
+#pause-menu .subtitle {
+  margin-bottom: 40px;
+}
+
+/* Danger Button (Disconnect) */
+.menu-btn.danger {
+  border-color: var(--danger-color);
+  margin-top: 20px;
+}
+
+.menu-btn.danger .btn-bg {
+  background: var(--danger-color);
+}
+
+.menu-btn.danger:hover .btn-text {
+  color: #fff;
+}
+
+/* Pause Hint */
+.pause-hint {
+  margin-top: 40px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--dim-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pause-hint span {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid var(--dim-color);
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+/* Vote Restart Status */
+.vote-restart-status {
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--dim-color);
+  text-align: center;
+}
+
+.vote-restart-status.active {
+  color: #00ffaa;
+}

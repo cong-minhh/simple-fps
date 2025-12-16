@@ -37,7 +37,13 @@ export class Menu {
             mpMenuBtn: document.getElementById('mp-menu-btn'),
             // Sensitivity slider
             sensitivitySlider: document.getElementById('sensitivity-slider'),
-            sensitivityValue: document.getElementById('sensitivity-value')
+            sensitivityValue: document.getElementById('sensitivity-value'),
+            // Pause menu elements
+            pauseMenu: document.getElementById('pause-menu'),
+            resumeBtn: document.getElementById('resume-btn'),
+            voteRestartBtn: document.getElementById('vote-restart-btn'),
+            pauseSettingsBtn: document.getElementById('pause-settings-btn'),
+            disconnectBtn: document.getElementById('disconnect-btn')
         };
 
         // Settings state (load from localStorage)
@@ -78,6 +84,14 @@ export class Menu {
         this.onMultiplayerConnect = null;
         this.onMultiplayerDisconnect = null;
         this.onMultiplayerPlayAgain = null;
+        // Pause menu callbacks
+        this.onResume = null;
+        this.onVoteRestart = null;
+        this.onDisconnect = null;
+
+        // Pause menu state
+        this.isPaused = false;
+        this.pauseSettingsOpen = false;
 
         this.setupEventListeners();
     }
@@ -100,9 +114,13 @@ export class Menu {
             this.showSettings();
         });
 
-        // Settings back button
+        // Settings back button - handle both main menu and pause menu context
         this.elements.settingsBackBtn?.addEventListener('click', () => {
-            this.hideSettings();
+            if (this.pauseSettingsOpen) {
+                this.hidePauseSettings();
+            } else {
+                this.hideSettings();
+            }
         });
 
         // Particles toggle
@@ -178,6 +196,34 @@ export class Menu {
         this.elements.mpMenuBtn?.addEventListener('click', () => {
             this.hideMpGameOver();
             this.showStart(0);
+            if (this.onMultiplayerDisconnect) {
+                this.onMultiplayerDisconnect();
+            }
+        });
+
+        // Pause menu event listeners
+        this.elements.resumeBtn?.addEventListener('click', () => {
+            this.hidePauseMenu();
+            if (this.onResume) {
+                this.onResume();
+            }
+        });
+
+        this.elements.voteRestartBtn?.addEventListener('click', () => {
+            if (this.onVoteRestart) {
+                this.onVoteRestart();
+            }
+        });
+
+        this.elements.pauseSettingsBtn?.addEventListener('click', () => {
+            this.showPauseSettings();
+        });
+
+        this.elements.disconnectBtn?.addEventListener('click', () => {
+            this.hidePauseMenu();
+            if (this.onDisconnect) {
+                this.onDisconnect();
+            }
             if (this.onMultiplayerDisconnect) {
                 this.onMultiplayerDisconnect();
             }
@@ -360,6 +406,70 @@ export class Menu {
         this.elements.gameOverMenu?.classList.add('hidden');
     }
 
+    // Pause Menu Methods
+    showPauseMenu(isMultiplayer = false) {
+        this.isPaused = true;
+        this.elements.pauseMenu?.classList.remove('hidden');
+
+        // Update button text based on game mode
+        const disconnectBtnText = this.elements.disconnectBtn?.querySelector('.btn-text');
+        if (disconnectBtnText) {
+            disconnectBtnText.textContent = isMultiplayer ? 'DISCONNECT' : 'MAIN MENU';
+        }
+
+        // Show/hide vote restart for multiplayer only
+        if (this.elements.voteRestartBtn) {
+            this.elements.voteRestartBtn.style.display = isMultiplayer ? 'flex' : 'none';
+        }
+    }
+
+    hidePauseMenu() {
+        this.isPaused = false;
+        this.pauseSettingsOpen = false;
+        this.elements.pauseMenu?.classList.add('hidden');
+        this.elements.settingsPanel?.classList.add('hidden');
+    }
+
+    showPauseSettings() {
+        this.pauseSettingsOpen = true;
+        this.elements.pauseMenu?.classList.add('hidden');
+        this.elements.settingsPanel?.classList.remove('hidden');
+    }
+
+    hidePauseSettings() {
+        this.pauseSettingsOpen = false;
+        this.elements.settingsPanel?.classList.add('hidden');
+        this.elements.pauseMenu?.classList.remove('hidden');
+    }
+
+    togglePauseMenu(isMultiplayer = false) {
+        if (this.pauseSettingsOpen) {
+            this.hidePauseSettings();
+            return true; // Still in pause menu
+        }
+        if (this.isPaused) {
+            this.hidePauseMenu();
+            return false;
+        } else {
+            this.showPauseMenu(isMultiplayer);
+            return true;
+        }
+    }
+
+    updateVoteRestartStatus(currentVotes, requiredVotes, hasVoted) {
+        const btn = this.elements.voteRestartBtn;
+        if (!btn) return;
+
+        const btnText = btn.querySelector('.btn-text');
+        if (btnText) {
+            if (hasVoted) {
+                btnText.textContent = `VOTED (${currentVotes}/${requiredVotes})`;
+            } else {
+                btnText.textContent = `VOTE RESTART (${currentVotes}/${requiredVotes})`;
+            }
+        }
+    }
+
     hideAll() {
         this.elements.startMenu?.classList.add('hidden');
         this.elements.gameOverMenu?.classList.add('hidden');
@@ -367,5 +477,8 @@ export class Menu {
         this.elements.loading?.classList.add('hidden');
         this.elements.multiplayerLobby?.classList.add('hidden');
         this.elements.mpGameOver?.classList.add('hidden');
+        this.elements.pauseMenu?.classList.add('hidden');
+        this.isPaused = false;
+        this.pauseSettingsOpen = false;
     }
 }

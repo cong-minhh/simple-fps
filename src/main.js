@@ -97,13 +97,23 @@ class Game {
         // Handle window resize
         window.addEventListener('resize', () => this.onResize());
 
-        // Click to re-lock pointer when playing
+        // ESC key handler for pause menu
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape') {
+                this.handleEscapeKey();
+            }
+        });
+
+        // Click to re-lock pointer when playing (only if not paused)
         this.renderer.domElement.addEventListener('click', () => {
             if ((this.state === STATES.PLAYING || this.state === STATES.MULTIPLAYER_PLAYING)
-                && !this.player.isLocked) {
+                && !this.player.isLocked && !this.menu.isPaused) {
                 this.player.lock();
             }
         });
+
+        // Setup pause menu callbacks
+        this.setupPauseMenuCallbacks();
 
         // Bind animate for optimal performance
         this.animate = this.animate.bind(this);
@@ -392,6 +402,64 @@ class Game {
                 this.menu.updatePlayerList(players, this.network.getPlayerId());
             }
         };
+    }
+
+    setupPauseMenuCallbacks() {
+        // Resume game
+        this.menu.onResume = () => {
+            this.resumeGame();
+        };
+
+        // Vote restart (multiplayer only)
+        this.menu.onVoteRestart = () => {
+            if (this.network && this.network.isConnected) {
+                this.network.send({ type: 'voteRestart' });
+                // Update button to show voted state
+                this.menu.updateVoteRestartStatus(1, 2, true);
+            }
+        };
+
+        // Disconnect/Main Menu
+        this.menu.onDisconnect = () => {
+            if (this.state === STATES.MULTIPLAYER_PLAYING) {
+                // Disconnect from server
+                this.network.disconnect();
+                if (this.multiplayerManager) {
+                    this.multiplayerManager.dispose();
+                    this.multiplayerManager = null;
+                }
+                this.hud.resetMultiplayer();
+            }
+            // Return to main menu
+            this.state = STATES.MENU;
+            this.hud.hide();
+            this.menu.showStart(this.score.getHighScore());
+        };
+    }
+
+    handleEscapeKey() {
+        // Only handle ESC when playing
+        if (this.state !== STATES.PLAYING && this.state !== STATES.MULTIPLAYER_PLAYING) {
+            return;
+        }
+
+        const isMultiplayer = this.state === STATES.MULTIPLAYER_PLAYING;
+
+        // Toggle pause menu
+        const stillPaused = this.menu.togglePauseMenu(isMultiplayer);
+
+        if (stillPaused) {
+            // Pause game - unlock pointer
+            this.player.unlock();
+        } else {
+            // Resume game
+            this.resumeGame();
+        }
+    }
+
+    resumeGame() {
+        this.menu.hidePauseMenu();
+        this.player.lock();
     }
 
     finishLoading() {

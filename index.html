@@ -201,6 +201,37 @@
     <span id="player-count-text">Players: 1</span>
   </div>
 
+  <!-- Pause Menu (ESC) -->
+  <div id="pause-menu" class="menu hidden">
+    <div class="menu-content">
+      <h1 class="glitch-title" data-text="PAUSED">PAUSED</h1>
+      <p class="subtitle">GAME PAUSED</p>
+
+      <div class="menu-controls">
+        <button id="resume-btn" class="menu-btn primary">
+          <span class="btn-text">RESUME</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="vote-restart-btn" class="menu-btn secondary">
+          <span class="btn-text">VOTE RESTART</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="pause-settings-btn" class="menu-btn secondary">
+          <span class="btn-text">SETTINGS</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="disconnect-btn" class="menu-btn danger">
+          <span class="btn-text">DISCONNECT</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+
+      <div class="pause-hint">
+        <span>ESC</span> to resume
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Panel -->
   <div id="settings-panel" class="menu hidden">
     <h1>⚙ SETTINGS</h1>
