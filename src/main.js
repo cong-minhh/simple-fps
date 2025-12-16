@@ -75,6 +75,8 @@ class Game {
         const initialSettings = this.menu.getSettings();
         this.arena.applySettings(initialSettings);
         this.hud.setHitmarkerEnabled(initialSettings.hitmarkers);
+        // Apply initial sensitivity (convert slider 1-10 to actual sensitivity 0.0008-0.004)
+        this.player.sensitivity = this.sliderToSensitivity(initialSettings.sensitivity);
 
         // Connect settings change callback
         this.menu.onSettingsChange = (setting, value) => {
@@ -84,6 +86,8 @@ class Game {
                 this.arena.setFlickerEnabled(value);
             } else if (setting === 'hitmarkers') {
                 this.hud.setHitmarkerEnabled(value);
+            } else if (setting === 'sensitivity') {
+                this.player.sensitivity = this.sliderToSensitivity(value);
             }
         };
 
@@ -582,6 +586,16 @@ class Game {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Convert slider value (1-10) to actual mouse sensitivity
+    // Slider 1 = 0.0008 (very slow), Slider 5 = 0.002 (default), Slider 10 = 0.004 (very fast)
+    sliderToSensitivity(sliderValue) {
+        // Linear mapping: 1 -> 0.0008, 10 -> 0.004
+        const minSens = 0.0008;
+        const maxSens = 0.004;
+        const normalized = (sliderValue - 1) / 9; // 0 to 1
+        return minSens + normalized * (maxSens - minSens);
     }
 }
 

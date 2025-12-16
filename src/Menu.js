@@ -34,14 +34,18 @@ export class Menu {
             mpResultSubtitle: document.getElementById('mp-result-subtitle'),
             mpFinalScores: document.getElementById('mp-final-scores'),
             mpPlayAgainBtn: document.getElementById('mp-play-again-btn'),
-            mpMenuBtn: document.getElementById('mp-menu-btn')
+            mpMenuBtn: document.getElementById('mp-menu-btn'),
+            // Sensitivity slider
+            sensitivitySlider: document.getElementById('sensitivity-slider'),
+            sensitivityValue: document.getElementById('sensitivity-value')
         };
 
         // Settings state (load from localStorage)
         this.settings = {
             particles: localStorage.getItem('fps_particles') !== 'false',
             flickerLights: localStorage.getItem('fps_flicker') !== 'false',
-            hitmarkers: localStorage.getItem('fps_hitmarkers') !== 'false'
+            hitmarkers: localStorage.getItem('fps_hitmarkers') !== 'false',
+            sensitivity: parseFloat(localStorage.getItem('fps_sensitivity')) || 5
         };
 
         // Load saved player name
@@ -59,6 +63,12 @@ export class Menu {
         }
         if (this.elements.hitmarkerToggle) {
             this.elements.hitmarkerToggle.checked = this.settings.hitmarkers;
+        }
+        if (this.elements.sensitivitySlider) {
+            this.elements.sensitivitySlider.value = this.settings.sensitivity;
+        }
+        if (this.elements.sensitivityValue) {
+            this.elements.sensitivityValue.textContent = this.settings.sensitivity;
         }
 
         // Callbacks
@@ -119,6 +129,19 @@ export class Menu {
             localStorage.setItem('fps_hitmarkers', this.settings.hitmarkers);
             if (this.onSettingsChange) {
                 this.onSettingsChange('hitmarkers', this.settings.hitmarkers);
+            }
+        });
+
+        // Sensitivity slider
+        this.elements.sensitivitySlider?.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            this.settings.sensitivity = value;
+            localStorage.setItem('fps_sensitivity', value);
+            if (this.elements.sensitivityValue) {
+                this.elements.sensitivityValue.textContent = value;
+            }
+            if (this.onSettingsChange) {
+                this.onSettingsChange('sensitivity', value);
             }
         });
 

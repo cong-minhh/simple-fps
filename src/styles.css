@@ -248,6 +248,46 @@ h1 {
   transform: translateX(24px);
 }
 
+/* Slider */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.slider-container input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 150px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  border: 1px solid var(--dim-color);
+}
+
+.slider-container input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--text-color);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: transform 0.1s;
+}
+
+.slider-container input[type=range]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+#sensitivity-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  width: 30px;
+  text-align: right;
+  color: var(--text-color);
+}
+
 /* =========================================
    HUD STYLES
    ========================================= */
