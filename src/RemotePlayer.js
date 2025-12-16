@@ -69,6 +69,12 @@ export class RemotePlayer {
         this.shootAnimTime = 0;
         this.reloadAnimTime = 0;
 
+        // Walking animation
+        this.walkPhase = 0;           // Current phase of walk cycle (0 to 2*PI)
+        this.walkSpeed = 0;           // Current walking speed (interpolated)
+        this.lastPosition = null;     // For calculating movement velocity
+        this.movementSpeed = 0;       // Actual movement speed this frame
+
         // Position interpolation - store camera position
         this.position = new THREE.Vector3(
             playerData.position?.x || 0,
@@ -101,27 +107,61 @@ export class RemotePlayer {
         this.mesh.userData.playerId = this.id;
         this.mesh.userData.remotePlayer = this;
 
-        // === LEGS (stay in main mesh - don't move when peeking) ===
-        const legGeometry = new THREE.BoxGeometry(0.16, 0.7, 0.16);
+        // === LEGS (segmented: thigh + shin for realistic walking) ===
         const legMaterial = new THREE.MeshLambertMaterial({ color: this.darkenColor(this.color) });
 
-        const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
-        leftLeg.position.set(-0.12, 0.35, 0);
-        leftLeg.castShadow = true;
-        leftLeg.userData.isPlayer = true;
-        leftLeg.userData.playerId = this.id;
-        leftLeg.userData.bodyPart = 'leg';
-        this.mesh.add(leftLeg);
-        this.leftLegMesh = leftLeg;
+        // Upper leg (thigh) geometry - shorter, stays stable
+        const thighGeometry = new THREE.BoxGeometry(0.16, 0.35, 0.16);
+        // Lower leg (shin) geometry - shorter, swings from knee
+        const shinGeometry = new THREE.BoxGeometry(0.14, 0.35, 0.14);
 
-        const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
-        rightLeg.position.set(0.12, 0.35, 0);
-        rightLeg.castShadow = true;
-        rightLeg.userData.isPlayer = true;
-        rightLeg.userData.playerId = this.id;
-        rightLeg.userData.bodyPart = 'leg';
-        this.mesh.add(rightLeg);
-        this.rightLegMesh = rightLeg;
+        // === LEFT LEG ===
+        // Left thigh (upper leg) - pivot at hip
+        const leftThigh = new THREE.Mesh(thighGeometry, legMaterial);
+        leftThigh.position.set(-0.12, 0.525, 0); // Hip height, center of thigh
+        leftThigh.castShadow = true;
+        leftThigh.userData.isPlayer = true;
+        leftThigh.userData.playerId = this.id;
+        leftThigh.userData.bodyPart = 'leg';
+        this.mesh.add(leftThigh);
+        this.leftThighMesh = leftThigh;
+
+        // Left shin (lower leg) - attached to bottom of thigh, pivots at knee
+        const leftShin = new THREE.Mesh(shinGeometry, legMaterial);
+        leftShin.position.set(0, -0.35, 0); // Below thigh, at knee joint
+        leftShin.castShadow = true;
+        leftShin.userData.isPlayer = true;
+        leftShin.userData.playerId = this.id;
+        leftShin.userData.bodyPart = 'leg';
+        leftThigh.add(leftShin); // Shin is child of thigh
+        this.leftShinMesh = leftShin;
+
+        // Keep reference to old name for compatibility
+        this.leftLegMesh = leftThigh;
+
+        // === RIGHT LEG ===
+        // Right thigh (upper leg) - pivot at hip
+        const rightThigh = new THREE.Mesh(thighGeometry, legMaterial);
+        rightThigh.position.set(0.12, 0.525, 0); // Hip height, center of thigh
+        rightThigh.castShadow = true;
+        rightThigh.userData.isPlayer = true;
+        rightThigh.userData.playerId = this.id;
+        rightThigh.userData.bodyPart = 'leg';
+        this.mesh.add(rightThigh);
+        this.rightThighMesh = rightThigh;
+
+        // Right shin (lower leg) - attached to bottom of thigh, pivots at knee
+        const rightShin = new THREE.Mesh(shinGeometry, legMaterial);
+        rightShin.position.set(0, -0.35, 0); // Below thigh, at knee joint
+        rightShin.castShadow = true;
+        rightShin.userData.isPlayer = true;
+        rightShin.userData.playerId = this.id;
+        rightShin.userData.bodyPart = 'leg';
+        rightThigh.add(rightShin); // Shin is child of thigh
+        this.rightShinMesh = rightShin;
+
+        // Keep reference to old name for compatibility
+        this.rightLegMesh = rightThigh;
 
         // === UPPER BODY GROUP (tilts when peeking) ===
         this.upperBodyGroup = new THREE.Group();
@@ -450,16 +490,71 @@ export class RemotePlayer {
         this.visorMesh.position.y = 1.52 + this.currentCrouchY;
         this.armsGroup.position.y = 1.1 + this.currentCrouchY;
 
-        // Compress legs smoothly (using interpolated progress)
-        // Legs shrink but stay above ground (bottom at Y=0)
+        // Compress legs smoothly (using interpolated progress) - for segmented legs
+        // Thighs shrink but stay above ground (bottom at Y=0)
         const legScale = 1.0 - (this.crouchProgress * 0.4); // 1.0 -> 0.6
-        this.leftLegMesh.scale.y = legScale;
-        this.rightLegMesh.scale.y = legScale;
-        // When legs shrink, move them UP so bottom stays at ground level
-        // Standing leg height: 0.7, center at 0.35. When scaled to 0.6, height is 0.42, center should be 0.21
-        const legY = 0.35 * legScale; // Keep bottom at ground level
-        this.leftLegMesh.position.y = legY;
-        this.rightLegMesh.position.y = legY;
+        this.leftThighMesh.scale.y = legScale;
+        this.rightThighMesh.scale.y = legScale;
+        // When thighs shrink, move them UP so bottom stays at ground level
+        const thighY = 0.525 * legScale; // Keep bottom at ground level
+        this.leftThighMesh.position.y = thighY;
+        this.rightThighMesh.position.y = thighY;
+
+        // === WALKING/RUNNING LEG ANIMATION ===
+        // Calculate movement speed from position delta
+        if (this.lastPosition) {
+            const dx = this.position.x - this.lastPosition.x;
+            const dz = this.position.z - this.lastPosition.z;
+            const horizontalSpeed = Math.sqrt(dx * dx + dz * dz) / deltaTime;
+            // Smooth the movement speed
+            this.movementSpeed += (horizontalSpeed - this.movementSpeed) * 0.15;
+        }
+        this.lastPosition = this.position.clone();
+
+        // Determine if moving significantly (threshold to avoid jitter when still)
+        const isMoving = this.movementSpeed > 0.5;
+
+        // Target walk speed based on movement and sprint state
+        let targetWalkSpeed = 0;
+        if (isMoving && !this.isCrouching) {
+            targetWalkSpeed = this.isSprinting ? 18 : 10; // Faster cycle when sprinting
+        } else if (isMoving && this.isCrouching) {
+            targetWalkSpeed = 6; // Slower when crouch-walking
+        }
+
+        // Smoothly interpolate walk speed
+        this.walkSpeed += (targetWalkSpeed - this.walkSpeed) * 0.1;
+
+        // Update walk phase
+        this.walkPhase += this.walkSpeed * deltaTime;
+        if (this.walkPhase > Math.PI * 2) this.walkPhase -= Math.PI * 2;
+
+        // Calculate shin swing angles (only lower leg swings, thigh stays stable)
+        const swingIntensity = this.isSprinting ? 0.6 : 0.4; // More swing when sprinting
+        const crouchSwingMultiplier = this.isCrouching ? 0.5 : 1.0; // Less swing when crouching
+        const swingMultiplier = swingIntensity * crouchSwingMultiplier * Math.min(1, this.walkSpeed / 5);
+
+        // Left and right legs are 180 degrees out of phase (opposite)
+        const leftPhase = Math.sin(this.walkPhase);
+        const rightPhase = Math.sin(this.walkPhase + Math.PI); // Opposite phase
+
+        // Apply shin rotation (swing from knee)
+        // Negative = bend backward, Positive = extend forward
+        // When walking, the shin bends back more as the leg goes back
+        this.leftShinMesh.rotation.x = leftPhase * swingMultiplier * 0.8;
+        this.rightShinMesh.rotation.x = rightPhase * swingMultiplier * 0.8;
+
+        // Add subtle thigh movement (very small, just to look natural)
+        const thighMultiplier = swingMultiplier * 0.2;
+        this.leftThighMesh.rotation.x = leftPhase * thighMultiplier;
+        this.rightThighMesh.rotation.x = rightPhase * thighMultiplier;
+
+        // Slight forward lean when sprinting
+        if (this.isSprinting && isMoving) {
+            this.upperBodyGroup.rotation.x = -0.08; // Lean forward
+        } else {
+            this.upperBodyGroup.rotation.x = 0;
+        }
 
         // === PEEK/LEAN (smooth, natural movement) ===
         // peekState: -1 = left (Q), +1 = right (E)
@@ -477,12 +572,12 @@ export class RemotePlayer {
         this.upperBodyGroup.position.x = this.currentPeekAngle;
         this.upperBodyGroup.rotation.z = -this.currentPeekTilt;
 
-        // Legs: follow body smoothly
+        // Legs: follow body smoothly (use thigh meshes for peek)
         const legShift = this.currentPeekAngle * 0.8;
-        this.leftLegMesh.position.x = -0.12 + legShift;
-        this.rightLegMesh.position.x = 0.12 + legShift;
-        this.leftLegMesh.rotation.z = -this.currentPeekTilt;
-        this.rightLegMesh.rotation.z = -this.currentPeekTilt;
+        this.leftThighMesh.position.x = -0.12 + legShift;
+        this.rightThighMesh.position.x = 0.12 + legShift;
+        this.leftThighMesh.rotation.z = -this.currentPeekTilt;
+        this.rightThighMesh.rotation.z = -this.currentPeekTilt;
 
         // === ADS/SCOPING ANIMATION (third-person view) ===
         // When aiming: gun centers in front of chin, arms at chest level
