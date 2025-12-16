@@ -442,21 +442,24 @@ export class RemotePlayer {
         this.leftLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
         this.rightLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
 
-        // === PEEK/LEAN (balanced: legs shift slightly, body shifts more, slight tilt) ===
+        // === PEEK/LEAN (match first-person view: Player.js uses 0.7 + 0.15 forward) ===
         // peekState: -1 = left (Q), +1 = right (E)
-        const targetPeekOffset = this.peekState * 0.12; // Body shifts (fixed direction)
-        const targetLegOffset = this.peekState * 0.03; // Legs shift less (subtle)
-        const targetPeekTilt = this.peekState * 0.05; // Slight body tilt (~3 degrees)
+        const targetPeekOffset = this.peekState * 0.5; // Body shifts (~0.5 to match actual peek)
+        const targetPeekTilt = this.peekState * 0.15; // Body tilt (~8 degrees)
 
-        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.15;
+        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.2;
 
-        // Upper body: shift + slight tilt
+        // Upper body: shift + tilt (lean around corner)
         this.upperBodyGroup.position.x = this.currentPeekAngle;
         this.upperBodyGroup.rotation.z = -targetPeekTilt; // Lean into the peek
 
-        // Legs: subtle shift to follow (1/4 of body shift)
-        this.leftLegMesh.position.x = -0.12 + (this.currentPeekAngle * 0.25);
-        this.rightLegMesh.position.x = 0.12 + (this.currentPeekAngle * 0.25);
+        // Legs: shift 60% of body + slight rotation to match body tilt
+        const legShift = this.currentPeekAngle * 0.6;
+        this.leftLegMesh.position.x = -0.12 + legShift;
+        this.rightLegMesh.position.x = 0.12 + legShift;
+        // Add slight leg rotation to match body lean
+        this.leftLegMesh.rotation.z = -targetPeekTilt * 0.5;
+        this.rightLegMesh.rotation.z = -targetPeekTilt * 0.5;
 
         // === ADS ===
         const targetAimOffset = this.isAiming ? -0.1 : 0;

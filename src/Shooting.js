@@ -582,22 +582,33 @@ export class Shooting {
 
             this.raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), this.camera);
 
-            // Get ALL intersections to check for walls
-            const allObjects = [...this.enemyMeshes];
+            // Raycast against ALL scene objects to detect walls/obstacles
+            // Include both enemy/player meshes and all other scene objects (walls, arena, boxes)
+            const allObjects = [];
 
-            // Add arena/scene objects for wall checking if available
-            if (this.arena && this.arena.mesh) {
-                allObjects.push(this.arena.mesh);
+            // Add all enemy/player meshes
+            for (const mesh of this.enemyMeshes) {
+                allObjects.push(mesh);
+            }
+
+            // Add all scene children for wall checking (excludes camera which has no geometry)
+            for (const obj of this.scene.children) {
+                // Skip lights, cameras, and objects already in enemyMeshes
+                if (obj.isLight || obj.isCamera || this.enemyMeshes.includes(obj)) continue;
+                allObjects.push(obj);
             }
 
             const intersects = this.raycaster.intersectObjects(allObjects, true);
 
             if (intersects.length > 0) {
-                // Find the first hit that is either a player/enemy OR a wall
+                // Find relevant hits - ignore floor, ceiling, particles, transparent objects
                 let playerHit = null;
                 let wallHit = null;
 
                 for (const hit of intersects) {
+                    // Skip very close hits (probably camera/local player geometry)
+                    if (hit.distance < 0.5) continue;
+
                     // Check if this is a player/enemy hit
                     let checkObj = hit.object;
                     while (checkObj.parent && !checkObj.userData.enemy && !checkObj.userData.isPlayer) {
@@ -605,9 +616,28 @@ export class Shooting {
                     }
 
                     if (checkObj.userData.isPlayer || checkObj.userData.enemy) {
+                        // This is a player/enemy hit
                         if (!playerHit) playerHit = { hit, rootObj: checkObj };
                     } else {
-                        // This is a wall/obstacle
+                        // Potential wall/obstacle - check if it's actually a solid blocking object
+                        // Skip if it's a floor (mostly horizontal), transparent, or very small
+                        const obj = hit.object;
+
+                        // Skip particles, sprites, non-mesh objects
+                        if (!obj.isMesh) continue;
+
+                        // Skip floors/ceilings (check normal - floor normals point up/down)
+                        if (hit.face && hit.face.normal) {
+                            const normal = hit.face.normal.clone();
+                            normal.transformDirection(obj.matrixWorld);
+                            // Skip if normal is mostly vertical (floor/ceiling)
+                            if (Math.abs(normal.y) > 0.8) continue;
+                        }
+
+                        // Skip if material is transparent
+                        if (obj.material && obj.material.transparent && obj.material.opacity < 0.5) continue;
+
+                        // This is a valid wall/obstacle
                         if (!wallHit) wallHit = hit;
                     }
 
