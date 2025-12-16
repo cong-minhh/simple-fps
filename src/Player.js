@@ -418,6 +418,17 @@ export class Player {
         return this.camera.position;
     }
 
+    // Get position WITHOUT peek offset (for network sync - keeps remote player legs still)
+    getBasePosition() {
+        const basePos = this.camera.position.clone();
+        if (this._peekOffsetX !== undefined) {
+            basePos.x -= this._peekOffsetX;
+            basePos.z -= this._peekOffsetZ;
+            basePos.y -= this._peekOffsetY;
+        }
+        return basePos;
+    }
+
     lock() {
         this.domElement.requestPointerLock();
     }

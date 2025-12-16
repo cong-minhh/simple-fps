@@ -1,12 +1,43 @@
 // RemotePlayer.js - Represents other players in the game with full state sync
 import * as THREE from 'three';
 
-// Weapon model configurations
+// Weapon model configurations - more distinctive shapes
 const WEAPON_MODELS = {
-    PISTOL: { length: 0.25, width: 0.06, color: 0x2a2a2a },
-    RIFLE: { length: 0.6, width: 0.08, color: 0x1a1a1a },
-    SMG: { length: 0.4, width: 0.07, color: 0x3a3a3a },
-    SHOTGUN: { length: 0.55, width: 0.1, color: 0x4a3020 }
+    PISTOL: {
+        length: 0.2,
+        height: 0.12,
+        width: 0.05,
+        color: 0x444444,
+        hasScope: false,
+        hasMag: true,
+        magSize: 0.06
+    },
+    RIFLE: {
+        length: 0.7,
+        height: 0.1,
+        width: 0.06,
+        color: 0x2a2a2a,
+        hasScope: true,
+        hasMag: true,
+        magSize: 0.1
+    },
+    SMG: {
+        length: 0.35,
+        height: 0.1,
+        width: 0.06,
+        color: 0x3a3a3a,
+        hasScope: false,
+        hasMag: true,
+        magSize: 0.08
+    },
+    SHOTGUN: {
+        length: 0.6,
+        height: 0.08,
+        width: 0.08,
+        color: 0x5a3a20,
+        hasScope: false,
+        hasMag: false
+    }
 };
 
 export class RemotePlayer {
@@ -26,7 +57,7 @@ export class RemotePlayer {
 
         // Visual states
         this.isCrouching = false;
-        this.peekState = 0; // -1 left, 0 none, 1 right
+        this.peekState = 0;
         this.isAiming = false;
         this.isSprinting = false;
         this.isReloading = false;
@@ -38,7 +69,7 @@ export class RemotePlayer {
         this.shootAnimTime = 0;
         this.reloadAnimTime = 0;
 
-        // Position interpolation
+        // Position interpolation - store camera position
         this.position = new THREE.Vector3(
             playerData.position?.x || 0,
             playerData.position?.y || 1.6,
@@ -50,133 +81,16 @@ export class RemotePlayer {
         this.headPitch = 0;
         this.targetHeadPitch = 0;
 
-        // Height state for syncing with camera position
+        // Height offset for camera-to-feet conversion
         this.currentHeight = 1.6;
 
         // Interpolation settings
-        this.lerpFactor = 0.15;
+        this.lerpFactor = 0.2; // Slightly faster for better jump visibility
 
         // Create visual representation
         this.createMesh();
         this.createNameTag();
         this.createHealthBar();
-    }
-
-    // ... (lines 62-264 unchanged) ...
-
-    updatePosition(position, rotation) {
-        this.targetPosition.copy(position); // Use full position including Y
-        this.targetRotation = rotation;
-        this.targetHeadPitch = rotation.x || 0;
-    }
-
-    updateState(state) {
-        if (!state) return;
-
-        this.isCrouching = state.isCrouching || false;
-        this.peekState = state.peekState || 0;
-        this.isAiming = state.isAiming || false;
-        this.isSprinting = state.isSprinting || false;
-
-        if (state.isReloading && !this.isReloading) {
-            this.playReloadAnimation();
-        }
-        this.isReloading = state.isReloading || false;
-
-        if (state.weapon && state.weapon !== this.weapon) {
-            this.setWeapon(state.weapon);
-        }
-    }
-
-    // ... (lines 292-339 unchanged) ...
-
-    update(deltaTime) {
-        if (!this.isAlive) return;
-
-        // === POSITION INTERPOLATION ===
-        this.position.lerp(this.targetPosition, this.lerpFactor);
-
-        // === HEIGHT & JUMP HANDLING ===
-        // Interpolate player height (Camera Y -> Feet Y offset)
-        const targetHeight = this.isCrouching ? 1.0 : 1.6;
-        this.currentHeight += (targetHeight - this.currentHeight) * 0.2;
-
-        // Mesh position is Camera Position - Player Height (to place feet on ground)
-        this.mesh.position.copy(this.position);
-        this.mesh.position.y -= this.currentHeight;
-
-        // === ROTATION INTERPOLATION ===
-        const current = this.mesh.rotation.y;
-        const target = this.targetRotation.y;
-        let diff = target - current;
-        if (diff > Math.PI) diff -= Math.PI * 2;
-        if (diff < -Math.PI) diff += Math.PI * 2;
-        this.mesh.rotation.y = current + diff * this.lerpFactor;
-
-        // Head pitch
-        this.headPitch += (this.targetHeadPitch - this.headPitch) * this.lerpFactor;
-        // Adjust head pitch to not look weird (invert or clamp might be needed depending on model)
-        // Since we fixed orientation to -Z, standard match should work
-        this.headMesh.rotation.x = -this.headPitch;
-        this.visorMesh.rotation.x = -this.headPitch;
-
-        // === CROUCH ANIMATION ===
-        // This handles local squashing of the model, independent of global Y
-        const targetCrouchY = this.isCrouching ? -0.4 : 0;
-        this.currentCrouchY += (targetCrouchY - this.currentCrouchY) * 0.2;
-        this.upperBodyGroup.position.y = 1.1 + this.currentCrouchY; // Move upper body down
-
-        // Legs compress when crouching
-        const legScale = this.isCrouching ? 0.6 : 1.0;
-        this.leftLegMesh.scale.y = legScale;
-        this.rightLegMesh.scale.y = legScale;
-        this.leftLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
-        this.rightLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
-
-        // === PEEK/LEAN ANIMATION ===
-        // Rotate entire upper body group (torso + head + arms), legs stay in place
-        const targetPeekAngle = -this.peekState * 0.2; // ~11 degrees
-        this.currentPeekAngle += (targetPeekAngle - this.currentPeekAngle) * 0.2;
-        this.upperBodyGroup.rotation.z = this.currentPeekAngle;
-
-        // === ADS/AIMING ANIMATION ===
-        // Push arms forward (-Z) when aiming
-        const targetAimOffset = this.isAiming ? -0.15 : 0; // Negative Z = forward
-        this.currentAimOffset += (targetAimOffset - this.currentAimOffset) * 0.2;
-        this.armsGroup.position.z = this.currentAimOffset;
-
-        // === SHOOT ANIMATION ===
-        if (this.shootAnimTime > 0) {
-            this.shootAnimTime -= deltaTime;
-            const recoil = Math.sin(this.shootAnimTime * 30) * 0.02;
-            if (this.gunMesh) {
-                // Recoil pushes gun backward (+Z direction in local space)
-                this.gunMesh.position.z += recoil;
-            }
-            this.muzzleFlashMaterial.opacity = this.shootAnimTime > 0.1 ? 1 : 0;
-        } else {
-            this.muzzleFlashMaterial.opacity = 0;
-        }
-
-        // === RELOAD ANIMATION ===
-        if (this.reloadAnimTime > 0) {
-            this.reloadAnimTime -= deltaTime;
-            const reloadPhase = (2.0 - this.reloadAnimTime) / 2.0;
-            // Tilt gun down during reload
-            if (this.gunMesh) {
-                this.gunMesh.rotation.x = Math.sin(reloadPhase * Math.PI) * 0.5;
-            }
-        }
-
-        // === SPRINT ANIMATION ===
-        if (this.isSprinting) {
-            const sway = Math.sin(Date.now() * 0.01) * 0.1;
-            this.leftArmMesh.rotation.x = sway;
-            this.rightArmMesh.rotation.x = -sway;
-        } else {
-            this.leftArmMesh.rotation.x = 0;
-            this.rightArmMesh.rotation.x = 0;
-        }
     }
 
     createMesh() {
@@ -188,17 +102,15 @@ export class RemotePlayer {
         this.mesh.userData.remotePlayer = this;
 
         // === LEGS (stay in main mesh - don't move when peeking) ===
-        const legGeometry = new THREE.BoxGeometry(0.18, 0.7, 0.2);
+        const legGeometry = new THREE.BoxGeometry(0.16, 0.7, 0.16);
         const legMaterial = new THREE.MeshLambertMaterial({ color: this.darkenColor(this.color) });
 
-        // Left leg
         const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
         leftLeg.position.set(-0.12, 0.35, 0);
         leftLeg.castShadow = true;
         this.mesh.add(leftLeg);
         this.leftLegMesh = leftLeg;
 
-        // Right leg
         const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
         rightLeg.position.set(0.12, 0.35, 0);
         rightLeg.castShadow = true;
@@ -207,27 +119,24 @@ export class RemotePlayer {
 
         // === UPPER BODY GROUP (tilts when peeking) ===
         this.upperBodyGroup = new THREE.Group();
-        this.upperBodyGroup.position.y = 0; // Position at hip level
         this.mesh.add(this.upperBodyGroup);
 
-        // === TORSO (in upper body group) ===
-        const torsoGeometry = new THREE.BoxGeometry(0.5, 0.6, 0.3);
+        // === TORSO ===
+        const torsoGeometry = new THREE.BoxGeometry(0.45, 0.55, 0.25);
         const torsoMaterial = new THREE.MeshLambertMaterial({ color: this.color });
         const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
-        torso.position.y = 1.1;
+        torso.position.y = 1.05;
         torso.castShadow = true;
         torso.userData.isPlayer = true;
         torso.userData.playerId = this.id;
         this.upperBodyGroup.add(torso);
         this.torsoMesh = torso;
 
-        // === HEAD (in upper body group) ===
-        const headGeometry = new THREE.SphereGeometry(0.22, 12, 12);
-        const headMaterial = new THREE.MeshLambertMaterial({
-            color: this.lightenColor(this.color)
-        });
+        // === HEAD ===
+        const headGeometry = new THREE.SphereGeometry(0.2, 12, 12);
+        const headMaterial = new THREE.MeshLambertMaterial({ color: this.lightenColor(this.color) });
         const head = new THREE.Mesh(headGeometry, headMaterial);
-        head.position.y = 1.55;
+        head.position.y = 1.5;
         head.castShadow = true;
         head.userData.isHead = true;
         head.userData.isPlayer = true;
@@ -235,32 +144,31 @@ export class RemotePlayer {
         this.upperBodyGroup.add(head);
         this.headMesh = head;
 
-        // Face indicator (visor/eyes area) - faces -Z direction (forward)
-        const visorGeometry = new THREE.BoxGeometry(0.3, 0.08, 0.1);
-        const visorMaterial = new THREE.MeshBasicMaterial({ color: 0x222222 });
+        // Face visor (direction indicator) - positioned at FRONT of head
+        const visorGeometry = new THREE.BoxGeometry(0.28, 0.06, 0.08);
+        const visorMaterial = new THREE.MeshBasicMaterial({ color: 0x111111 });
         const visor = new THREE.Mesh(visorGeometry, visorMaterial);
-        visor.position.set(0, 1.56, -0.18);
+        visor.position.set(0, 1.52, -0.16); // In front of head (-Z)
         this.upperBodyGroup.add(visor);
         this.visorMesh = visor;
 
-        // === ARMS (in upper body group) ===
-        const armGeometry = new THREE.BoxGeometry(0.12, 0.5, 0.12);
-        const armMaterial = new THREE.MeshLambertMaterial({ color: this.lightenColor(this.color) });
-
-        // Arm group (for aiming animation)
+        // === ARMS GROUP ===
         this.armsGroup = new THREE.Group();
-        this.armsGroup.position.y = 1.2;
+        this.armsGroup.position.y = 1.1;
         this.upperBodyGroup.add(this.armsGroup);
+
+        const armGeometry = new THREE.BoxGeometry(0.1, 0.45, 0.1);
+        const armMaterial = new THREE.MeshLambertMaterial({ color: this.lightenColor(this.color) });
 
         // Left arm
         const leftArm = new THREE.Mesh(armGeometry, armMaterial);
-        leftArm.position.set(-0.35, 0, -0.1);
+        leftArm.position.set(-0.3, 0, -0.05);
         this.armsGroup.add(leftArm);
         this.leftArmMesh = leftArm;
 
-        // Right arm (holding weapon)
+        // Right arm (weapon arm)
         const rightArm = new THREE.Mesh(armGeometry, armMaterial);
-        rightArm.position.set(0.35, 0, -0.1);
+        rightArm.position.set(0.3, 0, -0.05);
         this.armsGroup.add(rightArm);
         this.rightArmMesh = rightArm;
 
@@ -269,37 +177,81 @@ export class RemotePlayer {
 
         // Set initial position
         this.mesh.position.copy(this.position);
+        this.mesh.position.y -= this.currentHeight;
 
         this.scene.add(this.mesh);
     }
 
     createWeaponModel(weaponType) {
-        // Remove old weapon if exists
-        if (this.gunMesh) {
-            this.armsGroup.remove(this.gunMesh);
-            this.gunMesh.geometry.dispose();
-            this.gunMesh.material.dispose();
+        // Remove old weapon
+        if (this.gunGroup) {
+            this.armsGroup.remove(this.gunGroup);
+            this.gunGroup.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
         }
 
         const config = WEAPON_MODELS[weaponType] || WEAPON_MODELS.RIFLE;
-        const gunGeometry = new THREE.BoxGeometry(0.08, 0.08, config.length);
-        const gunMaterial = new THREE.MeshLambertMaterial({ color: config.color });
-        const gun = new THREE.Mesh(gunGeometry, gunMaterial);
-        // Gun at right arm, facing -Z (forward)
-        gun.position.set(0.35, -0.1, -(0.2 + config.length / 2));
-        this.armsGroup.add(gun);
-        this.gunMesh = gun;
 
-        // Muzzle flash at the front of the gun (-Z direction)
-        const flashGeometry = new THREE.SphereGeometry(0.08, 6, 6);
+        // Gun group for all weapon parts
+        this.gunGroup = new THREE.Group();
+        this.gunGroup.position.set(0.3, -0.15, -0.3); // In front of right arm
+        this.armsGroup.add(this.gunGroup);
+
+        // Main gun body
+        const bodyGeometry = new THREE.BoxGeometry(config.width, config.height, config.length);
+        const bodyMaterial = new THREE.MeshLambertMaterial({ color: config.color });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.z = -config.length / 2;
+        this.gunGroup.add(body);
+        this.gunMesh = body;
+
+        // Stock (for rifles/shotguns)
+        if (config.length > 0.4) {
+            const stockGeometry = new THREE.BoxGeometry(config.width * 0.8, config.height * 1.5, 0.15);
+            const stock = new THREE.Mesh(stockGeometry, bodyMaterial);
+            stock.position.set(0, -config.height * 0.3, 0.1);
+            this.gunGroup.add(stock);
+        }
+
+        // Barrel
+        const barrelGeometry = new THREE.CylinderGeometry(0.015, 0.02, config.length * 0.4, 8);
+        const barrelMaterial = new THREE.MeshLambertMaterial({ color: 0x111111 });
+        const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.02, -(config.length + config.length * 0.2));
+        this.gunGroup.add(barrel);
+
+        // Magazine (if applicable)
+        if (config.hasMag) {
+            const magGeometry = new THREE.BoxGeometry(config.width * 0.6, config.magSize, config.width * 0.8);
+            const magMaterial = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            const mag = new THREE.Mesh(magGeometry, magMaterial);
+            mag.position.set(0, -config.height / 2 - config.magSize / 2, -config.length * 0.4);
+            this.gunGroup.add(mag);
+        }
+
+        // Scope (if applicable)
+        if (config.hasScope) {
+            const scopeGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.12, 8);
+            const scopeMaterial = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            const scope = new THREE.Mesh(scopeGeometry, scopeMaterial);
+            scope.rotation.z = Math.PI / 2;
+            scope.position.set(0, config.height / 2 + 0.03, -config.length * 0.3);
+            this.gunGroup.add(scope);
+        }
+
+        // Muzzle flash
+        const flashGeometry = new THREE.SphereGeometry(0.06, 6, 6);
         const flashMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
             opacity: 0
         });
         const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-        flash.position.z = -(config.length / 2 + 0.1); // Front of gun
-        gun.add(flash);
+        flash.position.set(0, 0, -(config.length + config.length * 0.4));
+        this.gunGroup.add(flash);
         this.muzzleFlash = flash;
         this.muzzleFlashMaterial = flashMaterial;
     }
@@ -314,44 +266,29 @@ export class RemotePlayer {
         ctx.roundRect(10, 10, 236, 44, 8);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 26px Arial';
+        ctx.font = 'bold 24px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.name, 128, 32);
 
         const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
-
-        const material = new THREE.SpriteMaterial({
-            map: texture,
-            transparent: true,
-            depthTest: false
-        });
+        const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
         this.nameTag = new THREE.Sprite(material);
         this.nameTag.scale.set(1.5, 0.4, 1);
         this.nameTag.position.y = 2.0;
         this.mesh.add(this.nameTag);
-
         this.nameTexture = texture;
     }
 
     createHealthBar() {
         const bgGeometry = new THREE.PlaneGeometry(0.6, 0.06);
-        const bgMaterial = new THREE.MeshBasicMaterial({
-            color: 0x333333,
-            transparent: true,
-            opacity: 0.8,
-            depthTest: false
-        });
+        const bgMaterial = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.8, depthTest: false });
         const bg = new THREE.Mesh(bgGeometry, bgMaterial);
         bg.position.y = 1.85;
         this.mesh.add(bg);
 
         const barGeometry = new THREE.PlaneGeometry(0.56, 0.04);
-        const barMaterial = new THREE.MeshBasicMaterial({
-            color: 0x44ff44,
-            depthTest: false
-        });
+        const barMaterial = new THREE.MeshBasicMaterial({ color: 0x44ff44, depthTest: false });
         const bar = new THREE.Mesh(barGeometry, barMaterial);
         bar.position.y = 1.85;
         bar.position.z = 0.01;
@@ -362,38 +299,30 @@ export class RemotePlayer {
     }
 
     lightenColor(color) {
-        const r = ((color >> 16) & 255) / 255;
-        const g = ((color >> 8) & 255) / 255;
-        const b = (color & 255) / 255;
-        return new THREE.Color(
-            Math.min(1, r + 0.2),
-            Math.min(1, g + 0.2),
-            Math.min(1, b + 0.2)
-        );
+        const r = Math.min(1, ((color >> 16) & 255) / 255 + 0.2);
+        const g = Math.min(1, ((color >> 8) & 255) / 255 + 0.2);
+        const b = Math.min(1, (color & 255) / 255 + 0.2);
+        return new THREE.Color(r, g, b);
     }
 
     darkenColor(color) {
-        const r = ((color >> 16) & 255) / 255;
-        const g = ((color >> 8) & 255) / 255;
-        const b = (color & 255) / 255;
-        return new THREE.Color(
-            Math.max(0, r - 0.2),
-            Math.max(0, g - 0.2),
-            Math.max(0, b - 0.2)
-        );
+        const r = Math.max(0, ((color >> 16) & 255) / 255 - 0.2);
+        const g = Math.max(0, ((color >> 8) & 255) / 255 - 0.2);
+        const b = Math.max(0, (color & 255) / 255 - 0.2);
+        return new THREE.Color(r, g, b);
     }
 
-    // === STATE SETTERS ===
+    // === STATE UPDATES ===
 
     updatePosition(position, rotation) {
-        this.targetPosition.set(position.x, 0, position.z);
+        // Store full camera position including Y for jump sync
+        this.targetPosition.set(position.x, position.y, position.z);
         this.targetRotation = rotation;
         this.targetHeadPitch = rotation.x || 0;
     }
 
     updateState(state) {
         if (!state) return;
-
         this.isCrouching = state.isCrouching || false;
         this.peekState = state.peekState || 0;
         this.isAiming = state.isAiming || false;
@@ -415,13 +344,9 @@ export class RemotePlayer {
         this.healthBar.scale.x = percent;
         this.healthBar.position.x = (1 - percent) * -0.28;
 
-        if (percent > 0.5) {
-            this.healthBarMaterial.color.setHex(0x44ff44);
-        } else if (percent > 0.25) {
-            this.healthBarMaterial.color.setHex(0xffff44);
-        } else {
-            this.healthBarMaterial.color.setHex(0xff4444);
-        }
+        if (percent > 0.5) this.healthBarMaterial.color.setHex(0x44ff44);
+        else if (percent > 0.25) this.healthBarMaterial.color.setHex(0xffff44);
+        else this.healthBarMaterial.color.setHex(0xff4444);
     }
 
     setAlive(alive) {
@@ -439,16 +364,13 @@ export class RemotePlayer {
     showDamageFlash() {
         const origColor = this.torsoMesh.material.color.getHex();
         this.torsoMesh.material.color.setHex(0xffffff);
-        setTimeout(() => {
-            this.torsoMesh.material.color.setHex(origColor);
-        }, 100);
+        setTimeout(() => this.torsoMesh.material.color.setHex(origColor), 100);
     }
 
     showShootEffect() {
         this.shootAnimTime = 0.15;
         this.muzzleFlashMaterial.opacity = 1;
 
-        // Create light flash
         const flash = new THREE.PointLight(0xffff44, 2, 3);
         flash.position.copy(this.mesh.position);
         flash.position.y = 1.2;
@@ -460,16 +382,23 @@ export class RemotePlayer {
         this.reloadAnimTime = 2.0;
     }
 
-    // === UPDATE ===
+    // === MAIN UPDATE LOOP ===
 
     update(deltaTime) {
         if (!this.isAlive) return;
 
         // === POSITION INTERPOLATION ===
         this.position.lerp(this.targetPosition, this.lerpFactor);
-        this.mesh.position.copy(this.position);
 
-        // === ROTATION INTERPOLATION ===
+        // === HEIGHT OFFSET (Camera Y -> Feet Y) ===
+        const targetHeight = this.isCrouching ? 1.0 : 1.6;
+        this.currentHeight += (targetHeight - this.currentHeight) * 0.2;
+
+        // Set mesh position (feet at ground level)
+        this.mesh.position.copy(this.position);
+        this.mesh.position.y -= this.currentHeight;
+
+        // === ROTATION ===
         const current = this.mesh.rotation.y;
         const target = this.targetRotation.y;
         let diff = target - current;
@@ -483,60 +412,67 @@ export class RemotePlayer {
         this.visorMesh.rotation.x = -this.headPitch * 0.5;
 
         // === CROUCH ANIMATION ===
-        const targetCrouchY = this.isCrouching ? -0.4 : 0;
+        const targetCrouchY = this.isCrouching ? -0.35 : 0;
         this.currentCrouchY += (targetCrouchY - this.currentCrouchY) * 0.2;
-        this.torsoMesh.position.y = 1.1 + this.currentCrouchY;
-        this.headMesh.position.y = 1.55 + this.currentCrouchY;
-        this.visorMesh.position.y = 1.56 + this.currentCrouchY;
-        this.armsGroup.position.y = 1.2 + this.currentCrouchY;
-        this.healthBar.position.y = 1.85 + this.currentCrouchY;
-        this.nameTag.position.y = 2.0 + this.currentCrouchY;
 
-        // Legs compress when crouching
+        // Move upper body down when crouching
+        this.torsoMesh.position.y = 1.05 + this.currentCrouchY;
+        this.headMesh.position.y = 1.5 + this.currentCrouchY;
+        this.visorMesh.position.y = 1.52 + this.currentCrouchY;
+        this.armsGroup.position.y = 1.1 + this.currentCrouchY;
+
+        // Compress legs
         const legScale = this.isCrouching ? 0.6 : 1.0;
         this.leftLegMesh.scale.y = legScale;
         this.rightLegMesh.scale.y = legScale;
         this.leftLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
         this.rightLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
 
-        // === PEEK/LEAN ANIMATION ===
-        // Rotate entire upper body group (torso + head + arms), legs stay in place
-        const targetPeekAngle = -this.peekState * 0.2; // ~11 degrees
-        this.currentPeekAngle += (targetPeekAngle - this.currentPeekAngle) * 0.2;
-        this.upperBodyGroup.rotation.z = this.currentPeekAngle;
+        // === PEEK/LEAN (balanced: legs shift slightly, body shifts more, slight tilt) ===
+        // peekState: -1 = left (Q), +1 = right (E)
+        const targetPeekOffset = this.peekState * 0.12; // Body shifts (fixed direction)
+        const targetLegOffset = this.peekState * 0.03; // Legs shift less (subtle)
+        const targetPeekTilt = this.peekState * 0.05; // Slight body tilt (~3 degrees)
 
-        // === ADS/AIMING ANIMATION ===
-        // Push arms forward (-Z) when aiming
-        const targetAimOffset = this.isAiming ? -0.15 : 0; // Negative Z = forward
+        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.15;
+
+        // Upper body: shift + slight tilt
+        this.upperBodyGroup.position.x = this.currentPeekAngle;
+        this.upperBodyGroup.rotation.z = -targetPeekTilt; // Lean into the peek
+
+        // Legs: subtle shift to follow (1/4 of body shift)
+        this.leftLegMesh.position.x = -0.12 + (this.currentPeekAngle * 0.25);
+        this.rightLegMesh.position.x = 0.12 + (this.currentPeekAngle * 0.25);
+
+        // === ADS ===
+        const targetAimOffset = this.isAiming ? -0.1 : 0;
         this.currentAimOffset += (targetAimOffset - this.currentAimOffset) * 0.2;
         this.armsGroup.position.z = this.currentAimOffset;
 
         // === SHOOT ANIMATION ===
+        const baseGunZ = -0.3; // Base position of gun group
         if (this.shootAnimTime > 0) {
             this.shootAnimTime -= deltaTime;
-            const recoil = Math.sin(this.shootAnimTime * 30) * 0.02;
-            if (this.gunMesh) {
-                // Recoil pushes gun backward (+Z direction in local space)
-                this.gunMesh.position.z += recoil;
-            }
-            this.muzzleFlashMaterial.opacity = this.shootAnimTime > 0.1 ? 1 : 0;
+            const recoil = Math.sin(this.shootAnimTime * 30) * 0.015;
+            if (this.gunGroup) this.gunGroup.position.z = baseGunZ + recoil; // Set, not add
+            this.muzzleFlashMaterial.opacity = this.shootAnimTime > 0.08 ? 1 : 0;
         } else {
             this.muzzleFlashMaterial.opacity = 0;
+            if (this.gunGroup) this.gunGroup.position.z = baseGunZ; // Reset to base
         }
 
         // === RELOAD ANIMATION ===
         if (this.reloadAnimTime > 0) {
             this.reloadAnimTime -= deltaTime;
-            const reloadPhase = (2.0 - this.reloadAnimTime) / 2.0;
-            // Tilt gun down during reload
-            if (this.gunMesh) {
-                this.gunMesh.rotation.x = Math.sin(reloadPhase * Math.PI) * 0.5;
-            }
+            const phase = (2.0 - this.reloadAnimTime) / 2.0;
+            if (this.gunGroup) this.gunGroup.rotation.x = Math.sin(phase * Math.PI) * 0.4;
+        } else if (this.gunGroup) {
+            this.gunGroup.rotation.x = 0;
         }
 
         // === SPRINT ANIMATION ===
         if (this.isSprinting) {
-            const sway = Math.sin(Date.now() * 0.01) * 0.1;
+            const sway = Math.sin(Date.now() * 0.012) * 0.08;
             this.leftArmMesh.rotation.x = sway;
             this.rightArmMesh.rotation.x = -sway;
         } else {

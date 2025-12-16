@@ -275,7 +275,10 @@ export class MultiplayerManager {
 
         // Send local player position with state
         if (this.localPlayer && this.network.isConnected && !this.isRespawning) {
-            const pos = this.localPlayer.getPosition();
+            // Use getBasePosition to exclude peek offset - keeps remote legs still
+            const pos = this.localPlayer.getBasePosition ?
+                this.localPlayer.getBasePosition() :
+                this.localPlayer.getPosition();
             const rot = {
                 x: this.localPlayer.camera.rotation.x,
                 y: this.localPlayer.camera.rotation.y
@@ -298,7 +301,7 @@ export class MultiplayerManager {
     onPlayerJump() {
         if (this.localPlayer && this.network.isConnected) {
             // Force immediate update on jump to ensure other players see it
-            const pos = this.localPlayer.getPosition();
+            const pos = this.localPlayer.getBasePosition ? this.localPlayer.getBasePosition() : this.localPlayer.getPosition();
             const rot = {
                 x: this.localPlayer.camera.rotation.x,
                 y: this.localPlayer.camera.rotation.y
@@ -318,7 +321,7 @@ export class MultiplayerManager {
     onPlayerLand() {
         if (this.localPlayer && this.network.isConnected) {
             // Force immediate update on landing
-            const pos = this.localPlayer.getPosition();
+            const pos = this.localPlayer.getBasePosition ? this.localPlayer.getBasePosition() : this.localPlayer.getPosition();
             const rot = {
                 x: this.localPlayer.camera.rotation.x,
                 y: this.localPlayer.camera.rotation.y
