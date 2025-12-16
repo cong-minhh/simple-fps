@@ -160,12 +160,20 @@ export class Player {
         // Handle crouch state (hold to crouch)
         this.isCrouching = this.crouch;
 
-        // Smooth height transition (8 units/sec for snappy feel)
+        // Smooth height transition (3 units/sec for smooth feel)
         const targetHeight = this.isCrouching ? this.crouchHeight : this.standHeight;
         if (this.playerHeight !== targetHeight) {
             const heightDiff = targetHeight - this.playerHeight;
-            const maxChange = 8 * dt;
-            this.playerHeight += Math.abs(heightDiff) < maxChange ? heightDiff : Math.sign(heightDiff) * maxChange;
+            const maxChange = 3 * dt;
+            const heightChange = Math.abs(heightDiff) < maxChange ? heightDiff : Math.sign(heightDiff) * maxChange;
+
+            // Directly adjust camera Y to follow height change (prevents "jump" when crouching)
+            // This keeps the player grounded during crouch transition
+            if (this.isOnGround) {
+                this.camera.position.y += heightChange;
+            }
+
+            this.playerHeight += heightChange;
         }
 
         // Speed: crouch < walk < sprint (can't sprint while crouching)

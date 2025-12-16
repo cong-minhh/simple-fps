@@ -404,13 +404,18 @@ export class RemotePlayer {
         // === POSITION INTERPOLATION ===
         this.position.lerp(this.targetPosition, this.lerpFactor);
 
-        // === HEIGHT OFFSET (Camera Y -> Feet Y) ===
-        const targetHeight = this.isCrouching ? 1.0 : 1.6;
-        this.currentHeight += (targetHeight - this.currentHeight) * 0.2;
+        // === MESH POSITION (keep feet at ground level) ===
+        // When crouching, camera Y drops 0.6m (1.6 -> 1.0), but we want feet to stay planted
+        // Compensate by adding back the crouch offset, synced with body animation
+        if (this.crouchHeightOffset === undefined) this.crouchHeightOffset = 0;
+        const targetCrouchOffset = this.isCrouching ? 0.6 : 0; // Add back the 0.6m when crouching
+        this.crouchHeightOffset += (targetCrouchOffset - this.crouchHeightOffset) * 0.3; // Same speed as body anim
 
-        // Set mesh position (feet at ground level)
-        this.mesh.position.copy(this.position);
-        this.mesh.position.y -= this.currentHeight;
+        this.mesh.position.set(
+            this.position.x,
+            this.position.y - 1.6 + this.crouchHeightOffset, // Compensate for crouch
+            this.position.z
+        );
 
         // === ROTATION ===
         const current = this.mesh.rotation.y;
@@ -425,9 +430,14 @@ export class RemotePlayer {
         this.headMesh.rotation.x = -this.headPitch * 0.5;
         this.visorMesh.rotation.x = -this.headPitch * 0.5;
 
-        // === CROUCH ANIMATION ===
+        // === CROUCH ANIMATION (fast, no jump) ===
         const targetCrouchY = this.isCrouching ? -0.35 : 0;
-        this.currentCrouchY += (targetCrouchY - this.currentCrouchY) * 0.2;
+        this.currentCrouchY += (targetCrouchY - this.currentCrouchY) * 0.3; // Fast crouch
+
+        // Smooth crouch progress (0 = standing, 1 = crouching)
+        if (this.crouchProgress === undefined) this.crouchProgress = 0;
+        const targetCrouchProgress = this.isCrouching ? 1 : 0;
+        this.crouchProgress += (targetCrouchProgress - this.crouchProgress) * 0.3; // Fast
 
         // Move upper body down when crouching
         this.torsoMesh.position.y = 1.05 + this.currentCrouchY;
@@ -435,31 +445,39 @@ export class RemotePlayer {
         this.visorMesh.position.y = 1.52 + this.currentCrouchY;
         this.armsGroup.position.y = 1.1 + this.currentCrouchY;
 
-        // Compress legs
-        const legScale = this.isCrouching ? 0.6 : 1.0;
+        // Compress legs smoothly (using interpolated progress)
+        // Legs shrink but stay above ground (bottom at Y=0)
+        const legScale = 1.0 - (this.crouchProgress * 0.4); // 1.0 -> 0.6
         this.leftLegMesh.scale.y = legScale;
         this.rightLegMesh.scale.y = legScale;
-        this.leftLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
-        this.rightLegMesh.position.y = this.isCrouching ? 0.2 : 0.35;
+        // When legs shrink, move them UP so bottom stays at ground level
+        // Standing leg height: 0.7, center at 0.35. When scaled to 0.6, height is 0.42, center should be 0.21
+        const legY = 0.35 * legScale; // Keep bottom at ground level
+        this.leftLegMesh.position.y = legY;
+        this.rightLegMesh.position.y = legY;
 
-        // === PEEK/LEAN (match first-person view: Player.js uses 0.7 + 0.15 forward) ===
+        // === PEEK/LEAN (smooth, natural movement) ===
         // peekState: -1 = left (Q), +1 = right (E)
-        const targetPeekOffset = this.peekState * 0.5; // Body shifts (~0.5 to match actual peek)
-        const targetPeekTilt = this.peekState * 0.15; // Body tilt (~8 degrees)
+        const targetPeekOffset = this.peekState * 0.5;
+        const targetPeekTilt = this.peekState * 0.15;
 
-        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.05; // Slower peek
+        // Smooth interpolation - faster but natural feeling
+        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.08;
 
-        // Upper body: shift + tilt (lean around corner)
+        // Smooth tilt interpolation (initialize if needed)
+        if (this.currentPeekTilt === undefined) this.currentPeekTilt = 0;
+        this.currentPeekTilt += (targetPeekTilt - this.currentPeekTilt) * 0.08;
+
+        // Upper body: shift + smooth tilt
         this.upperBodyGroup.position.x = this.currentPeekAngle;
-        this.upperBodyGroup.rotation.z = -targetPeekTilt; // Lean into the peek
+        this.upperBodyGroup.rotation.z = -this.currentPeekTilt;
 
-        // Legs: shift 80% of body + full rotation to match body tilt
+        // Legs: follow body smoothly
         const legShift = this.currentPeekAngle * 0.8;
         this.leftLegMesh.position.x = -0.12 + legShift;
         this.rightLegMesh.position.x = 0.12 + legShift;
-        // Full leg rotation to match body lean
-        this.leftLegMesh.rotation.z = -targetPeekTilt;
-        this.rightLegMesh.rotation.z = -targetPeekTilt;
+        this.leftLegMesh.rotation.z = -this.currentPeekTilt;
+        this.rightLegMesh.rotation.z = -this.currentPeekTilt;
 
         // === ADS/SCOPING ANIMATION (third-person view) ===
         // When aiming: gun centers in front of chin, arms at chest level
