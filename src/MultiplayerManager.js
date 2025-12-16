@@ -2,6 +2,17 @@
 import * as THREE from 'three';
 import { RemotePlayer } from './RemotePlayer.js';
 
+// Game modes - mirrored from server
+const GAME_MODES = {
+    DEATHMATCH: 'deathmatch',
+    TEAM_DEATHMATCH: 'team_deathmatch'
+};
+
+const TEAMS = {
+    ALPHA: 'alpha',
+    BRAVO: 'bravo'
+};
+
 export class MultiplayerManager {
     constructor(scene, arena, networkManager, hud = null) {
         this.scene = scene;
@@ -15,12 +26,15 @@ export class MultiplayerManager {
         // Local player and shooting references
         this.localPlayer = null;
         this.localPlayerId = null;
+        this.localPlayerTeam = null;
         this.shooting = null; // For reading ADS, reload, weapon state
         this.bulletTracerManager = null; // For rendering remote player bullet tracers
 
         // Game state
         this.gameStarted = false;
+        this.gameMode = GAME_MODES.DEATHMATCH;
         this.scores = [];
+        this.teamScores = { [TEAMS.ALPHA]: 0, [TEAMS.BRAVO]: 0 };
         this.killFeed = [];
         this.respawnCountdown = 0;
         this.isRespawning = false;
@@ -33,6 +47,7 @@ export class MultiplayerManager {
         this.onRespawnStart = null;
         this.onRespawnEnd = null;
         this.onPlayerCountChange = null;
+        this.onTeamScoreUpdate = null;
 
         // Setup network handlers
         this.setupNetworkHandlers();
@@ -61,6 +76,19 @@ export class MultiplayerManager {
         this.network.on('joined', (data) => {
             this.localPlayerId = data.playerId;
 
+            // Store game mode and team info
+            this.gameMode = data.gameMode || GAME_MODES.DEATHMATCH;
+            if (data.teamScores) {
+                this.teamScores = data.teamScores;
+            }
+
+            // Find local player's team from player list
+            const localPlayerData = data.players.find(p => p.id === this.localPlayerId);
+            if (localPlayerData && localPlayerData.team) {
+                this.localPlayerTeam = localPlayerData.team;
+                console.log(`Assigned to team: ${this.localPlayerTeam}`);
+            }
+
             // Add existing players
             data.players.forEach(playerData => {
                 if (playerData.id !== this.localPlayerId) {
@@ -70,7 +98,7 @@ export class MultiplayerManager {
 
             if (data.gameStarted) {
                 this.gameStarted = true;
-                if (this.onGameStart) this.onGameStart(data.config);
+                if (this.onGameStart) this.onGameStart(data.config, data.gameMode);
             }
 
             if (this.onPlayerCountChange) {
@@ -80,12 +108,30 @@ export class MultiplayerManager {
 
         // Game start
         this.network.on('game_start', (data) => {
-            console.log('Game started!');
+            console.log(`Game started! Mode: ${data.gameMode}`);
             this.gameStarted = true;
+            this.gameMode = data.gameMode || GAME_MODES.DEATHMATCH;
             this.scores = [];
             this.killFeed = [];
 
-            if (this.onGameStart) this.onGameStart(data.config);
+            // Reset team scores
+            if (data.teamScores) {
+                this.teamScores = data.teamScores;
+                if (this.onTeamScoreUpdate) {
+                    this.onTeamScoreUpdate(this.teamScores);
+                }
+            }
+
+            // Update local player's team from player list
+            if (data.players) {
+                const localPlayerData = data.players.find(p => p.id === this.localPlayerId);
+                if (localPlayerData && localPlayerData.team) {
+                    this.localPlayerTeam = localPlayerData.team;
+                    console.log(`Team reassigned: ${this.localPlayerTeam}`);
+                }
+            }
+
+            if (this.onGameStart) this.onGameStart(data.config, data.gameMode);
         });
 
         // Game end
@@ -148,10 +194,20 @@ export class MultiplayerManager {
             this.scores = data.scores;
             if (this.onScoreUpdate) this.onScoreUpdate(this.scores);
 
-            // Add to kill feed
+            // Update team scores
+            if (data.teamScores) {
+                this.teamScores = data.teamScores;
+                if (this.onTeamScoreUpdate) {
+                    this.onTeamScoreUpdate(this.teamScores);
+                }
+            }
+
+            // Add to kill feed with team info
             const killInfo = {
                 killer: data.killerName,
+                killerTeam: data.killerTeam,
                 victim: data.victimName,
+                victimTeam: data.victimTeam,
                 isHeadshot: data.isHeadshot,
                 isLocalKiller: data.killerId === this.localPlayerId,
                 isLocalVictim: data.victimId === this.localPlayerId
@@ -403,6 +459,30 @@ export class MultiplayerManager {
         return this.gameStarted && !this.isRespawning;
     }
 
+    // Team getters
+    getGameMode() {
+        return this.gameMode;
+    }
+
+    getTeamScores() {
+        return this.teamScores;
+    }
+
+    getLocalPlayerTeam() {
+        return this.localPlayerTeam;
+    }
+
+    isTeamMode() {
+        return this.gameMode === GAME_MODES.TEAM_DEATHMATCH;
+    }
+
+    // Check if a player is on the same team as local player
+    isSameTeam(playerId) {
+        if (!this.isTeamMode() || !this.localPlayerTeam) return false;
+        const player = this.remotePlayers.get(playerId);
+        return player && player.team === this.localPlayerTeam;
+    }
+
     reset() {
         // Remove all remote players
         this.remotePlayers.forEach(player => {
@@ -411,10 +491,13 @@ export class MultiplayerManager {
         this.remotePlayers.clear();
 
         this.gameStarted = false;
+        this.gameMode = GAME_MODES.DEATHMATCH;
         this.scores = [];
+        this.teamScores = { [TEAMS.ALPHA]: 0, [TEAMS.BRAVO]: 0 };
         this.killFeed = [];
         this.respawnCountdown = 0;
         this.isRespawning = false;
+        this.localPlayerTeam = null;
     }
 
     dispose() {

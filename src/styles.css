@@ -1242,3 +1242,96 @@ h1 {
 .vote-restart-status.active {
   color: #00ffaa;
 }
+
+/* =========================================
+   TEAM DEATHMATCH STYLES
+   ========================================= */
+
+/* Team Score Display */
+#team-score-display {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  padding: 12px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 101;
+  font-family: var(--font-mono);
+}
+
+#team-score-display.hidden {
+  display: none;
+}
+
+.team-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.team-score.alpha {
+  color: #4488ff;
+}
+
+.team-score.bravo {
+  color: #ff4444;
+}
+
+.team-score.local-team {
+  transform: scale(1.1);
+}
+
+.team-score.local-team .team-label {
+  font-weight: bold;
+}
+
+.team-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.team-score-value {
+  font-size: 36px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.team-divider {
+  font-size: 14px;
+  color: var(--dim-color);
+  font-weight: bold;
+}
+
+/* Team indicators in kill feed */
+.kill-entry .killer.team-alpha {
+  color: #4488ff;
+}
+
+.kill-entry .killer.team-bravo {
+  color: #ff4444;
+}
+
+.kill-entry .victim.team-alpha {
+  color: #4488ff;
+}
+
+.kill-entry .victim.team-bravo {
+  color: #ff4444;
+}
+
+/* Team scoreboard styling */
+.scoreboard-row.team-alpha {
+  border-left: 3px solid #4488ff;
+}
+
+.scoreboard-row.team-bravo {
+  border-left: 3px solid #ff4444;
+}

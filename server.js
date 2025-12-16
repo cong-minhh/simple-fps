@@ -4,13 +4,33 @@ import { createServer } from 'http';
 
 const PORT = process.env.PORT || 8080;
 
+// Game modes
+const GAME_MODES = {
+    DEATHMATCH: 'deathmatch',
+    TEAM_DEATHMATCH: 'team_deathmatch'
+};
+
+// Teams for team-based modes
+const TEAMS = {
+    ALPHA: 'alpha',  // Blue team
+    BRAVO: 'bravo'   // Red team
+};
+
+const TEAM_COLORS = {
+    [TEAMS.ALPHA]: [0x4488ff, 0x66aaff, 0x88ccff, 0x3377ee], // Blue shades
+    [TEAMS.BRAVO]: [0xff4444, 0xff6666, 0xff8888, 0xee3333]  // Red shades
+};
+
 // Game configuration
 const CONFIG = {
     KILL_LIMIT: 20,
+    TEAM_KILL_LIMIT: 50, // Higher limit for team modes
     TIME_LIMIT: 10 * 60 * 1000, // 10 minutes
     RESPAWN_DELAY: 3000, // 3 seconds
     TICK_RATE: 20, // Updates per second
-    MAX_PLAYERS_PER_ROOM: 8
+    MAX_PLAYERS_PER_ROOM: 8,
+    FRIENDLY_FIRE: false,
+    DEFAULT_MODE: GAME_MODES.TEAM_DEATHMATCH
 };
 
 // Player class
@@ -27,6 +47,7 @@ class Player {
         this.weapon = 'RIFLE';
         this.isAlive = true;
         this.respawnTime = 0;
+        this.team = null; // Will be assigned for team modes
         this.color = this.generateColor();
         this.lastUpdate = Date.now();
     }
@@ -37,6 +58,15 @@ class Player {
             0xff44ff, 0x44ffff, 0xff8844, 0x8844ff
         ];
         return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // Assign team color based on team
+    setTeam(team) {
+        this.team = team;
+        if (team && TEAM_COLORS[team]) {
+            const teamColors = TEAM_COLORS[team];
+            this.color = teamColors[Math.floor(Math.random() * teamColors.length)];
+        }
     }
 
     toJSON() {
@@ -50,7 +80,8 @@ class Player {
             deaths: this.deaths,
             weapon: this.weapon,
             isAlive: this.isAlive,
-            color: this.color
+            color: this.color,
+            team: this.team
         };
     }
 }
@@ -64,9 +95,22 @@ class Room {
         this.gameStartTime = 0;
         this.killFeed = [];
         this.lastTick = Date.now();
+
+        // Game mode support
+        this.gameMode = CONFIG.DEFAULT_MODE;
+        this.teamScores = {
+            [TEAMS.ALPHA]: 0,
+            [TEAMS.BRAVO]: 0
+        };
     }
 
     addPlayer(player) {
+        // Assign team in team modes
+        if (this.gameMode === GAME_MODES.TEAM_DEATHMATCH) {
+            const team = this.getTeamWithFewerPlayers();
+            player.setTeam(team);
+        }
+
         this.players.set(player.id, player);
 
         // Auto-start when 2+ players
@@ -84,45 +128,123 @@ class Room {
         }
     }
 
+    // Get team with fewer players for balancing
+    getTeamWithFewerPlayers() {
+        let alphaCount = 0;
+        let bravoCount = 0;
+
+        this.players.forEach(player => {
+            if (player.team === TEAMS.ALPHA) alphaCount++;
+            else if (player.team === TEAMS.BRAVO) bravoCount++;
+        });
+
+        return alphaCount <= bravoCount ? TEAMS.ALPHA : TEAMS.BRAVO;
+    }
+
+    // Get team spawn points
+    getTeamSpawnPoints(team) {
+        if (team === TEAMS.ALPHA) {
+            // Alpha spawns on negative Z side (blue team)
+            return [
+                { x: -8, y: 1.7, z: -8 },
+                { x: -5, y: 1.7, z: -8 },
+                { x: 0, y: 1.7, z: -8 },
+                { x: -7, y: 1.7, z: -5 }
+            ];
+        } else if (team === TEAMS.BRAVO) {
+            // Bravo spawns on positive Z side (red team)
+            return [
+                { x: 8, y: 1.7, z: 8 },
+                { x: 5, y: 1.7, z: 8 },
+                { x: 0, y: 1.7, z: 8 },
+                { x: 7, y: 1.7, z: 5 }
+            ];
+        }
+        // Default random spawns
+        return [
+            { x: -8, y: 1.7, z: -8 },
+            { x: 8, y: 1.7, z: -8 },
+            { x: -8, y: 1.7, z: 8 },
+            { x: 8, y: 1.7, z: 8 },
+            { x: 0, y: 1.7, z: 0 }
+        ];
+    }
+
+    setGameMode(mode) {
+        if (!this.gameStarted) {
+            this.gameMode = mode;
+            console.log(`Room ${this.id}: Game mode set to ${mode}`);
+        }
+    }
+
     startGame() {
         this.gameStarted = true;
         this.gameStartTime = Date.now();
         this.killFeed = [];
+        this.teamScores = {
+            [TEAMS.ALPHA]: 0,
+            [TEAMS.BRAVO]: 0
+        };
 
-        // Reset all players
-        this.players.forEach(player => {
+        // Reset all players and reassign teams for balance
+        const playerList = Array.from(this.players.values());
+        playerList.forEach((player, index) => {
             player.kills = 0;
             player.deaths = 0;
             player.health = 100;
             player.isAlive = true;
+
+            // Reassign teams evenly at game start
+            if (this.gameMode === GAME_MODES.TEAM_DEATHMATCH) {
+                const team = index % 2 === 0 ? TEAMS.ALPHA : TEAMS.BRAVO;
+                player.setTeam(team);
+            }
         });
 
         this.broadcast({
             type: 'game_start',
             config: CONFIG,
-            players: this.getPlayersArray()
+            gameMode: this.gameMode,
+            players: this.getPlayersArray(),
+            teamScores: this.teamScores
         });
 
-        console.log(`Room ${this.id}: Game started with ${this.players.size} players`);
+        console.log(`Room ${this.id}: Game started (${this.gameMode}) with ${this.players.size} players`);
     }
 
     endGame(reason = 'Game Over') {
         this.gameStarted = false;
 
-        // Find winner
         let winner = null;
-        let maxKills = -1;
-        this.players.forEach(player => {
-            if (player.kills > maxKills) {
-                maxKills = player.kills;
-                winner = player;
+        let winningTeam = null;
+
+        if (this.gameMode === GAME_MODES.TEAM_DEATHMATCH) {
+            // Determine winning team
+            if (this.teamScores[TEAMS.ALPHA] > this.teamScores[TEAMS.BRAVO]) {
+                winningTeam = TEAMS.ALPHA;
+            } else if (this.teamScores[TEAMS.BRAVO] > this.teamScores[TEAMS.ALPHA]) {
+                winningTeam = TEAMS.BRAVO;
+            } else {
+                winningTeam = 'tie';
             }
-        });
+        } else {
+            // Find individual winner (FFA mode)
+            let maxKills = -1;
+            this.players.forEach(player => {
+                if (player.kills > maxKills) {
+                    maxKills = player.kills;
+                    winner = player;
+                }
+            });
+        }
 
         this.broadcast({
             type: 'game_end',
             reason,
+            gameMode: this.gameMode,
             winner: winner ? winner.toJSON() : null,
+            winningTeam,
+            teamScores: this.teamScores,
             players: this.getPlayersArray()
         });
 
@@ -141,10 +263,17 @@ class Room {
         victim.isAlive = false;
         victim.respawnTime = Date.now() + CONFIG.RESPAWN_DELAY;
 
+        // Update team score in TDM
+        if (this.gameMode === GAME_MODES.TEAM_DEATHMATCH && killer.team) {
+            this.teamScores[killer.team]++;
+        }
+
         // Add to kill feed
         const killInfo = {
             killer: killer.name,
+            killerTeam: killer.team,
             victim: victim.name,
+            victimTeam: victim.team,
             isHeadshot,
             timestamp: Date.now()
         };
@@ -157,14 +286,28 @@ class Room {
             killerId,
             victimId,
             killerName: killer.name,
+            killerTeam: killer.team,
             victimName: victim.name,
+            victimTeam: victim.team,
             isHeadshot,
-            scores: this.getScores()
+            scores: this.getScores(),
+            teamScores: this.teamScores
         });
 
         // Check win condition
-        if (killer.kills >= CONFIG.KILL_LIMIT) {
-            this.endGame(`${killer.name} wins!`);
+        if (this.gameMode === GAME_MODES.TEAM_DEATHMATCH) {
+            // Team win check
+            const winningTeam = Object.entries(this.teamScores)
+                .find(([team, score]) => score >= CONFIG.TEAM_KILL_LIMIT);
+            if (winningTeam) {
+                const teamName = winningTeam[0] === TEAMS.ALPHA ? 'Alpha' : 'Bravo';
+                this.endGame(`Team ${teamName} wins!`);
+            }
+        } else {
+            // Individual win check
+            if (killer.kills >= CONFIG.KILL_LIMIT) {
+                this.endGame(`${killer.name} wins!`);
+            }
         }
     }
 
@@ -176,27 +319,19 @@ class Room {
         player.health = 100;
         player.spawnProtectionUntil = Date.now() + 2000; // 2 seconds of invulnerability
 
-        // Random spawn position
-        const spawnPoints = [
-            { x: -8, y: 1.7, z: -8 },
-            { x: 8, y: 1.7, z: -8 },
-            { x: -8, y: 1.7, z: 8 },
-            { x: 8, y: 1.7, z: 8 },
-            { x: 0, y: 1.7, z: 0 },
-            { x: -5, y: 1.7, z: 0 },
-            { x: 5, y: 1.7, z: 0 },
-            { x: 0, y: 1.7, z: -5 }
-        ];
+        // Get team-appropriate spawn points
+        const spawnPoints = this.getTeamSpawnPoints(player.team);
         const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
         player.position = { ...spawn };
 
-        console.log(`Player ${player.name} respawning at:`, spawn);
+        console.log(`Player ${player.name} (${player.team || 'no team'}) respawning at:`, spawn);
 
         this.broadcast({
             type: 'player_respawn',
             playerId,
             position: player.position,
             health: player.health,
+            team: player.team,
             spawnProtection: 2000 // Tell client about protection duration
         });
     }
@@ -326,22 +461,24 @@ class GameServer {
         room.addPlayer(player);
         this.playerToRoom.set(playerId, room);
 
-        // Send join confirmation
+        // Send join confirmation with game mode info
         ws.send(JSON.stringify({
             type: 'joined',
             playerId,
             players: room.getPlayersArray(),
             gameStarted: room.gameStarted,
+            gameMode: room.gameMode,
+            teamScores: room.teamScores,
             config: CONFIG
         }));
 
-        // Notify others
+        // Notify others (includes team info now)
         room.broadcast({
             type: 'player_joined',
             player: player.toJSON()
         }, playerId);
 
-        console.log(`Player ${player.name} (${playerId}) joined room ${room.id}`);
+        console.log(`Player ${player.name} (${playerId}) joined room ${room.id} as ${player.team || 'no team'}`);
     }
 
     handlePosition(playerId, message) {
@@ -392,6 +529,14 @@ class GameServer {
         const victim = room.players.get(message.targetId);
 
         if (!attacker || !victim || !victim.isAlive) return;
+
+        // Check for friendly fire in team modes
+        if (room.gameMode === GAME_MODES.TEAM_DEATHMATCH &&
+            !CONFIG.FRIENDLY_FIRE &&
+            attacker.team === victim.team) {
+            // Same team - ignore damage
+            return;
+        }
 
         // Check spawn protection
         if (victim.spawnProtectionUntil && Date.now() < victim.spawnProtectionUntil) {
