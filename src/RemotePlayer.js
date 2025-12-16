@@ -447,35 +447,54 @@ export class RemotePlayer {
         const targetPeekOffset = this.peekState * 0.5; // Body shifts (~0.5 to match actual peek)
         const targetPeekTilt = this.peekState * 0.15; // Body tilt (~8 degrees)
 
-        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.2;
+        this.currentPeekAngle += (targetPeekOffset - this.currentPeekAngle) * 0.05; // Slower peek
 
         // Upper body: shift + tilt (lean around corner)
         this.upperBodyGroup.position.x = this.currentPeekAngle;
         this.upperBodyGroup.rotation.z = -targetPeekTilt; // Lean into the peek
 
-        // Legs: shift 60% of body + slight rotation to match body tilt
-        const legShift = this.currentPeekAngle * 0.6;
+        // Legs: shift 80% of body + full rotation to match body tilt
+        const legShift = this.currentPeekAngle * 0.8;
         this.leftLegMesh.position.x = -0.12 + legShift;
         this.rightLegMesh.position.x = 0.12 + legShift;
-        // Add slight leg rotation to match body lean
-        this.leftLegMesh.rotation.z = -targetPeekTilt * 0.5;
-        this.rightLegMesh.rotation.z = -targetPeekTilt * 0.5;
+        // Full leg rotation to match body lean
+        this.leftLegMesh.rotation.z = -targetPeekTilt;
+        this.rightLegMesh.rotation.z = -targetPeekTilt;
 
-        // === ADS ===
-        const targetAimOffset = this.isAiming ? -0.1 : 0;
-        this.currentAimOffset += (targetAimOffset - this.currentAimOffset) * 0.2;
-        this.armsGroup.position.z = this.currentAimOffset;
+        // === ADS/SCOPING ANIMATION (third-person view) ===
+        // When aiming: gun centers in front of chin, arms at chest level
+        const aimProgress = this.isAiming ? 1 : 0;
+        const currentAimProgress = this.currentAimOffset || 0;
+        this.currentAimOffset += (aimProgress - currentAimProgress) * 0.12;
+
+        // Arms group - push forward, stay at chest level (not raised too high)
+        this.armsGroup.position.z = -0.05 + (this.currentAimOffset * -0.35); // Push forward
+        this.armsGroup.position.y = 1.1 + this.currentCrouchY + (this.currentAimOffset * 0.1); // Slight raise only
+
+        // Arms come together and center when aiming
+        this.leftArmMesh.position.x = -0.3 + (this.currentAimOffset * 0.1); // Move toward center
+        this.rightArmMesh.position.x = 0.3 - (this.currentAimOffset * 0.1); // Move toward center
+
+        // Gun - close to body, centered
+        if (this.gunGroup) {
+            // Gun closer to center of body
+            this.gunGroup.position.x = 0.3 - (this.currentAimOffset * 0.15); // Closer to center
+            this.gunGroup.position.y = 0 + (this.currentAimOffset * 0.1); // Higher up
+            // Keep gun pointing straight forward
+            this.gunGroup.rotation.x = this.currentAimOffset * -0.05;
+        }
 
         // === SHOOT ANIMATION ===
-        const baseGunZ = -0.3; // Base position of gun group
+        // Use ADS offset as new base for gun position
+        const adsGunZ = this.isAiming ? 0.15 : 0.15; // Gun close to body in both stances
         if (this.shootAnimTime > 0) {
             this.shootAnimTime -= deltaTime;
             const recoil = Math.sin(this.shootAnimTime * 30) * 0.015;
-            if (this.gunGroup) this.gunGroup.position.z = baseGunZ + recoil; // Set, not add
+            if (this.gunGroup) this.gunGroup.position.z = adsGunZ + recoil;
             this.muzzleFlashMaterial.opacity = this.shootAnimTime > 0.08 ? 1 : 0;
         } else {
             this.muzzleFlashMaterial.opacity = 0;
-            if (this.gunGroup) this.gunGroup.position.z = baseGunZ; // Reset to base
+            if (this.gunGroup) this.gunGroup.position.z = adsGunZ;
         }
 
         // === RELOAD ANIMATION ===
