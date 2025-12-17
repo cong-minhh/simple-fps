@@ -196,6 +196,12 @@ export class Shooting {
         // Last bullet trajectory data for network sync
         this.lastBulletData = { origin: null, target: null };
 
+        // Hit effect particle pool (performance optimization)
+        this._hitEffectPool = [];
+        this._hitEffectPoolSize = 20;
+        this._hitEffectGeometry = new THREE.SphereGeometry(0.03, 4, 4);
+        this._initHitEffectPool();
+
         // Gun model
         this.gunModel = null;
         this.defaultGunPos = new THREE.Vector3(0.25, -0.2, -0.4);
@@ -958,47 +964,82 @@ export class Shooting {
         }
     }
 
-    createHitEffect(position, isHeadshot = false) {
-        const particleCount = isHeadshot ? 8 : 5;
-        const particles = new THREE.Group();
-        const color = isHeadshot ? 0xffff00 : 0xff6600;
-
-        for (let i = 0; i < particleCount; i++) {
-            const geometry = new THREE.SphereGeometry(0.03, 4, 4);
+    // Initialize hit effect particle pool (call once in constructor)
+    _initHitEffectPool() {
+        for (let i = 0; i < this._hitEffectPoolSize; i++) {
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color: 0xff6600,
                 transparent: true,
                 opacity: 1
             });
-            const particle = new THREE.Mesh(geometry, material);
+            const mesh = new THREE.Mesh(this._hitEffectGeometry, material);
+            mesh.visible = false;
+            mesh.userData.velocity = new THREE.Vector3();
+            mesh.userData.active = false;
+            mesh.userData.startTime = 0;
+            this.scene.add(mesh);
+            this._hitEffectPool.push(mesh);
+        }
+    }
+
+    // Get an inactive particle from pool
+    _getPooledParticle() {
+        for (const p of this._hitEffectPool) {
+            if (!p.userData.active) return p;
+        }
+        return null; // Pool exhausted
+    }
+
+    createHitEffect(position, isHeadshot = false) {
+        const particleCount = isHeadshot ? 8 : 5;
+        const color = isHeadshot ? 0xffff00 : 0xff6600;
+        const startTime = performance.now();
+        const activatedParticles = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            const particle = this._getPooledParticle();
+            if (!particle) break; // Pool exhausted
+
             particle.position.copy(position);
-            particle.velocity = new THREE.Vector3(
+            particle.material.color.setHex(color);
+            particle.material.opacity = 1;
+            particle.userData.velocity.set(
                 (Math.random() - 0.5) * 2,
                 Math.random() * 2,
                 (Math.random() - 0.5) * 2
             );
-            particles.add(particle);
+            particle.userData.active = true;
+            particle.userData.startTime = startTime;
+            particle.visible = true;
+            activatedParticles.push(particle);
         }
 
-        this.scene.add(particles);
-
-        let startTime = performance.now();
+        // Animate pooled particles
         const animate = () => {
-            const elapsed = (performance.now() - startTime) / 1000;
-            if (elapsed > 0.3) {
-                this.scene.remove(particles);
-                particles.traverse(obj => {
-                    if (obj.geometry) obj.geometry.dispose();
-                    if (obj.material) obj.material.dispose();
-                });
-                return;
+            const now = performance.now();
+            let anyActive = false;
+
+            for (const p of activatedParticles) {
+                if (!p.userData.active) continue;
+
+                const elapsed = (now - p.userData.startTime) / 1000;
+                if (elapsed > 0.3) {
+                    // Return to pool
+                    p.visible = false;
+                    p.userData.active = false;
+                } else {
+                    anyActive = true;
+                    p.position.x += p.userData.velocity.x * 0.016;
+                    p.position.y += p.userData.velocity.y * 0.016;
+                    p.position.z += p.userData.velocity.z * 0.016;
+                    p.userData.velocity.y -= 0.2;
+                    p.material.opacity = 1 - elapsed / 0.3;
+                }
             }
-            particles.children.forEach(p => {
-                p.position.add(p.velocity.clone().multiplyScalar(0.016));
-                p.velocity.y -= 0.2;
-                p.material.opacity = 1 - elapsed / 0.3;
-            });
-            requestAnimationFrame(animate);
+
+            if (anyActive) {
+                requestAnimationFrame(animate);
+            }
         };
         animate();
     }

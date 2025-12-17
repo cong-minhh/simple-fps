@@ -5,9 +5,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vercel FPS: Low-Poly Arena</title>
-  <meta name="description" content="A minimalistic low-poly FPS game - survive waves of enemies in a fast-paced arena!">
-  <script type="module" crossorigin src="/assets/index-BHsBw3FJ.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BNbVqs3f.css">
+  <meta name="description" content="A minimalistic low-poly FPS game - survive waves of enemies in a fast-paced arena!">
+  <script type="module" crossorigin src="/assets/index-BLz0SEbG.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/three-nq-n7KlS.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-6GVho4HQ.css">
 </head>
 
 <body>
@@ -18,6 +19,15 @@
   <div id="hud" class="hidden">
     <div id="crosshair"></div>
     <div id="hitmarker" class="hidden"></div>
+    <!-- Sniper Scope Overlay -->
+    <div id="scope-overlay" class="hidden">
+      <div class="scope-vignette"></div>
+      <div class="scope-reticle">
+        <div class="scope-cross-h"></div>
+        <div class="scope-cross-v"></div>
+        <div class="scope-dot"></div>
+      </div>
+    </div>
     <!-- Reload Indicator -->
     <div id="reload-indicator" class="hidden">
       <div class="reload-progress"></div>
@@ -58,6 +68,10 @@
         <span class="slot-key">4</span>
         <span class="slot-name">Pistol</span>
       </div>
+      <div class="weapon-slot" data-slot="5">
+        <span class="slot-key">5</span>
+        <span class="slot-name">Sniper</span>
+      </div>
     </div>
     <!-- Enemy Direction Indicators -->
     <div id="enemy-indicators"></div>
@@ -72,7 +86,11 @@
 
       <div class="menu-controls">
         <button id="start-btn" class="menu-btn primary">
-          <span class="btn-text">INITIALIZE</span>
+          <span class="btn-text">SOLO MODE</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="multiplayer-btn" class="menu-btn primary multiplayer">
+          <span class="btn-text">MULTIPLAYER</span>
           <span class="btn-bg"></span>
         </button>
         <button id="settings-btn" class="menu-btn secondary">
@@ -91,6 +109,140 @@
         <div class="key-row"><span>SPACE</span> JUMP</div>
         <div class="key-row"><span>LMB</span> SHOOT</div>
         <div class="key-row"><span>RMB</span> AIM</div>
+        <div class="key-row"><span>TAB</span> SCOREBOARD</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer Lobby -->
+  <div id="multiplayer-lobby" class="menu hidden">
+    <div class="menu-content">
+      <h1 class="glitch-title" data-text="MULTIPLAYER">MULTIPLAYER</h1>
+      <p class="subtitle">DEATHMATCH ARENA</p>
+
+      <div class="lobby-form">
+        <div class="input-group">
+          <label for="player-name">CALL SIGN</label>
+          <input type="text" id="player-name" placeholder="Enter your name" maxlength="16" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="server-url">SERVER</label>
+          <input type="text" id="server-url" placeholder="ws://localhost:8080" value="ws://localhost:8080">
+        </div>
+      </div>
+
+      <div class="lobby-controls">
+        <button id="connect-btn" class="menu-btn primary">
+          <span class="btn-text">CONNECT</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="lobby-back-btn" class="menu-btn secondary">
+          <span class="btn-text">BACK</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+
+      <div id="lobby-status" class="lobby-status hidden">
+        <div class="loader"></div>
+        <p id="lobby-status-text">Connecting...</p>
+      </div>
+
+      <div id="lobby-players" class="lobby-players hidden">
+        <h3>PLAYERS IN LOBBY</h3>
+        <ul id="player-list"></ul>
+        <p class="waiting-text">Waiting for more players...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer Game Over -->
+  <div id="multiplayer-game-over" class="menu hidden">
+    <div class="menu-content">
+      <h1 id="mp-result-title" class="glitch-title">GAME OVER</h1>
+      <p id="mp-result-subtitle" class="subtitle">MATCH COMPLETE</p>
+
+      <div id="mp-final-scores" class="mp-final-scores">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="menu-controls">
+        <button id="mp-play-again-btn" class="menu-btn primary">
+          <span class="btn-text">PLAY AGAIN</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="mp-menu-btn" class="menu-btn secondary">
+          <span class="btn-text">MAIN MENU</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scoreboard Overlay (shown on TAB) -->
+  <div id="scoreboard" class="hidden">
+    <div class="scoreboard-container">
+      <h2>SCOREBOARD</h2>
+      <div class="scoreboard-header">
+        <span class="sb-name">PLAYER</span>
+        <span class="sb-kills">KILLS</span>
+        <span class="sb-deaths">DEATHS</span>
+        <span class="sb-kd">K/D</span>
+      </div>
+      <div id="scoreboard-rows">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Kill Feed -->
+  <div id="kill-feed">
+    <!-- Populated dynamically -->
+  </div>
+
+  <!-- Respawn Overlay -->
+  <div id="respawn-overlay" class="hidden">
+    <div class="respawn-content">
+      <h2>YOU DIED</h2>
+      <p class="respawn-killer">Killed by <span id="respawn-killer-name">Enemy</span></p>
+      <div class="respawn-countdown">
+        <span id="respawn-timer">3</span>
+      </div>
+      <p class="respawn-text">RESPAWNING...</p>
+    </div>
+  </div>
+
+  <!-- Player Count (multiplayer HUD) -->
+  <div id="player-count" class="hidden">
+    <span id="player-count-text">Players: 1</span>
+  </div>
+
+  <!-- Pause Menu (ESC) -->
+  <div id="pause-menu" class="menu hidden">
+    <div class="menu-content">
+      <h1 class="glitch-title" data-text="PAUSED">PAUSED</h1>
+      <p class="subtitle">GAME PAUSED</p>
+
+      <div class="menu-controls">
+        <button id="resume-btn" class="menu-btn primary">
+          <span class="btn-text">RESUME</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="vote-restart-btn" class="menu-btn secondary">
+          <span class="btn-text">VOTE RESTART</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="pause-settings-btn" class="menu-btn secondary">
+          <span class="btn-text">SETTINGS</span>
+          <span class="btn-bg"></span>
+        </button>
+        <button id="disconnect-btn" class="menu-btn danger">
+          <span class="btn-text">DISCONNECT</span>
+          <span class="btn-bg"></span>
+        </button>
+      </div>
+
+      <div class="pause-hint">
+        <span>ESC</span> to resume
       </div>
     </div>
   </div>
@@ -120,6 +272,13 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+      <div class="setting-row">
+        <label for="sensitivity-slider">Mouse Sensitivity</label>
+        <div class="slider-container">
+          <input type="range" id="sensitivity-slider" min="1" max="10" value="5" step="0.5">
+          <span id="sensitivity-value">5</span>
+        </div>
+      </div>
     </div>
     <button id="settings-back-btn">BACK</button>
   </div>
@@ -137,7 +296,7 @@
   <div id="loading" class="menu">
     <h2>Loading...</h2>
   </div>
-
+
 </body>
 
 </html>

@@ -10,15 +10,61 @@ const CONFIG = {
     TIME_LIMIT: 10 * 60 * 1000, // 10 minutes
     RESPAWN_DELAY: 3000, // 3 seconds
     TICK_RATE: 20, // Updates per second
-    MAX_PLAYERS_PER_ROOM: 8
+    MAX_PLAYERS_PER_ROOM: 8,
+    PLAYER_TIMEOUT: 30000, // 30 seconds without update = disconnect
+    TIMEOUT_CHECK_INTERVAL: 10000 // Check every 10 seconds
 };
+
+// Rate limiting configuration (per player)
+const RATE_LIMITS = {
+    position: { interval: 40, maxPerSecond: 30 },  // ~25/sec allowed
+    shoot: { interval: 50, maxPerSecond: 20 },
+    hit: { interval: 80, maxPerSecond: 15 },
+    weapon_change: { interval: 200, maxPerSecond: 10 }
+};
+
+// Input validation bounds
+const BOUNDS = {
+    MAX_POSITION: 15,
+    MIN_POSITION: -15,
+    MAX_HEIGHT: 10,
+    MIN_HEIGHT: 0,
+    MAX_DAMAGE: 500,
+    MAX_NAME_LENGTH: 16
+};
+
+// Validation utilities
+function isValidNumber(val) {
+    return typeof val === 'number' && isFinite(val) && !isNaN(val);
+}
+
+function isValidPosition(pos) {
+    if (!pos || typeof pos !== 'object') return false;
+    if (!isValidNumber(pos.x) || !isValidNumber(pos.y) || !isValidNumber(pos.z)) return false;
+    if (Math.abs(pos.x) > BOUNDS.MAX_POSITION) return false;
+    if (Math.abs(pos.z) > BOUNDS.MAX_POSITION) return false;
+    if (pos.y < BOUNDS.MIN_HEIGHT || pos.y > BOUNDS.MAX_HEIGHT) return false;
+    return true;
+}
+
+function isValidRotation(rot) {
+    if (!rot || typeof rot !== 'object') return false;
+    if (!isValidNumber(rot.x) || !isValidNumber(rot.y)) return false;
+    return true;
+}
+
+function sanitizeName(name) {
+    if (!name || typeof name !== 'string') return null;
+    // Remove non-printable characters, limit length
+    return name.replace(/[^\x20-\x7E]/g, '').trim().slice(0, BOUNDS.MAX_NAME_LENGTH);
+}
 
 // Player class
 class Player {
     constructor(id, ws, name) {
         this.id = id;
         this.ws = ws;
-        this.name = name || `Player${id.slice(0, 4)}`;
+        this.name = sanitizeName(name) || `Player${id.slice(0, 4)}`;
         this.position = { x: 0, y: 1.7, z: 0 };
         this.rotation = { x: 0, y: 0 };
         this.health = 100;
@@ -29,6 +75,42 @@ class Player {
         this.respawnTime = 0;
         this.color = this.generateColor();
         this.lastUpdate = Date.now();
+
+        // Rate limiting state
+        this.rateLimits = {};
+        for (const type of Object.keys(RATE_LIMITS)) {
+            this.rateLimits[type] = { lastTime: 0, count: 0, lastSecond: 0 };
+        }
+    }
+
+    // Check rate limit for message type, returns true if allowed
+    checkRateLimit(type) {
+        const limit = RATE_LIMITS[type];
+        if (!limit) return true; // No limit for this type
+
+        const now = Date.now();
+        const state = this.rateLimits[type];
+
+        // Reset counter each second
+        const currentSecond = Math.floor(now / 1000);
+        if (currentSecond !== state.lastSecond) {
+            state.count = 0;
+            state.lastSecond = currentSecond;
+        }
+
+        // Check interval
+        if (now - state.lastTime < limit.interval) {
+            return false;
+        }
+
+        // Check per-second limit
+        if (state.count >= limit.maxPerSecond) {
+            return false;
+        }
+
+        state.lastTime = now;
+        state.count++;
+        return true;
     }
 
     generateColor() {
@@ -351,6 +433,13 @@ class GameServer {
         const player = room.players.get(playerId);
         if (!player || !player.isAlive) return;
 
+        // Rate limiting
+        if (!player.checkRateLimit('position')) return;
+
+        // Validate position
+        if (!isValidPosition(message.position)) return;
+        if (!isValidRotation(message.rotation)) return;
+
         player.position = message.position;
         player.rotation = message.rotation;
         player.state = message.state || {}; // Store player state
@@ -373,6 +462,9 @@ class GameServer {
         const player = room.players.get(playerId);
         if (!player || !player.isAlive) return;
 
+        // Rate limiting
+        if (!player.checkRateLimit('shoot')) return;
+
         // Broadcast shoot to others with bullet trajectory data
         room.broadcast({
             type: 'player_shoot',
@@ -393,28 +485,34 @@ class GameServer {
 
         if (!attacker || !victim || !victim.isAlive) return;
 
+        // Rate limiting
+        if (!attacker.checkRateLimit('hit')) return;
+
+        // Validate damage
+        const damage = Number(message.damage);
+        if (!isValidNumber(damage) || damage < 0 || damage > BOUNDS.MAX_DAMAGE) return;
+
         // Check spawn protection
         if (victim.spawnProtectionUntil && Date.now() < victim.spawnProtectionUntil) {
-            console.log(`${victim.name} is spawn protected, ignoring hit`);
-            return;
+            return; // Silently ignore (no console spam)
         }
 
         // Apply damage
-        victim.health -= message.damage;
+        victim.health -= damage;
 
         // Broadcast damage
         room.broadcast({
             type: 'player_damage',
             targetId: message.targetId,
             attackerId: playerId,
-            damage: message.damage,
+            damage: damage,
             health: victim.health,
-            isHeadshot: message.isHeadshot
+            isHeadshot: !!message.isHeadshot
         });
 
         // Check for kill
         if (victim.health <= 0) {
-            room.handleKill(playerId, message.targetId, message.isHeadshot);
+            room.handleKill(playerId, message.targetId, !!message.isHeadshot);
         }
     }
 
@@ -424,6 +522,13 @@ class GameServer {
 
         const player = room.players.get(playerId);
         if (!player) return;
+
+        // Rate limiting
+        if (!player.checkRateLimit('weapon_change')) return;
+
+        // Validate weapon type
+        const validWeapons = ['RIFLE', 'PISTOL', 'SMG', 'SHOTGUN', 'SNIPER'];
+        if (!validWeapons.includes(message.weapon)) return;
 
         player.weapon = message.weapon;
 
@@ -455,6 +560,7 @@ class GameServer {
     }
 
     startGameLoop() {
+        // Game state update loop
         setInterval(() => {
             this.rooms.forEach(room => {
                 if (room.gameStarted) {
@@ -462,6 +568,22 @@ class GameServer {
                 }
             });
         }, 1000 / CONFIG.TICK_RATE);
+
+        // Player timeout check loop
+        setInterval(() => {
+            const now = Date.now();
+            this.rooms.forEach(room => {
+                room.players.forEach((player, playerId) => {
+                    if (now - player.lastUpdate > CONFIG.PLAYER_TIMEOUT) {
+                        console.log(`Player ${player.name} timed out (no updates for ${CONFIG.PLAYER_TIMEOUT / 1000}s)`);
+                        // Close the WebSocket - this will trigger handleDisconnect
+                        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+                            player.ws.close(1000, 'Connection timeout');
+                        }
+                    }
+                });
+            });
+        }, CONFIG.TIMEOUT_CHECK_INTERVAL);
     }
 
     start() {
