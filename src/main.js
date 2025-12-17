@@ -223,6 +223,11 @@ class Game {
             this.audio.playReload();
         };
 
+        // Sniper scope overlay callback
+        this.shooting.onScopeChange = (isScoped, opacity) => {
+            this.hud.updateScopeOverlay(isScoped, opacity);
+        };
+
         // Update shoot callback to pass weapon type
         const originalOnShoot = this.shooting.onShoot;
         this.shooting.onShoot = () => {

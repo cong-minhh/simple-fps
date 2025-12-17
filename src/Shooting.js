@@ -96,6 +96,28 @@ const WEAPONS = {
         recoilPattern: [
             [0.08, 0.01], [0.09, -0.02], [0.1, 0.015], [0.09, -0.01], [0.08, 0.01], [0.07, 0]
         ]
+    },
+    SNIPER: {
+        name: 'Sniper',
+        fireRate: 0.8, // Bolt-action, slow rate
+        damage: 100,
+        headMultiplier: 4.0, // One-shot headshot potential
+        magazineSize: 5,
+        reloadTime: 3500,
+        recoilAmount: 0.15,
+        recoilRecovery: 3,
+        spread: 0.04, // Hip-fire is inaccurate
+        adsSpread: 0, // Perfect accuracy when scoped
+        adsZoom: 4.0, // High zoom for sniping
+        adsOffsetY: -0.11,
+        adsSpeed: 8, // Fast ADS like PUBG
+        automatic: false,
+        hasScope: true, // Enable scope overlay
+        model: { bodySize: [0.05, 0.1, 0.7], barrelSize: [0.03, 0.03, 0.5], color: 0x2a2a2a },
+        // Sniper pattern - heavy vertical kick, minimal horizontal
+        recoilPattern: [
+            [0.12, 0], [0.1, 0.01], [0.08, -0.01], [0.06, 0], [0.05, 0]
+        ]
     }
 };
 
@@ -155,6 +177,14 @@ export class Shooting {
         this.onShoot = null;
         this.onWeaponChange = null;
         this.onReload = null; // For reload sound
+        this.onScopeChange = null; // Callback for scope overlay (sniper)
+
+        // Scope state
+        this.isScoped = false;
+        this.scopeZoomLevel = 4.0; // Current zoom level (adjustable with scroll)
+        this.minScopeZoom = 2.0;   // Minimum zoom (2x)
+        this.maxScopeZoom = 8.0;   // Maximum zoom (8x)
+        this.targetScopeZoom = 4.0; // Target for smooth interpolation
 
         // Enemy meshes
         this.enemyMeshes = [];
@@ -200,16 +230,32 @@ export class Shooting {
         // Prevent context menu on right click
         document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        // Weapon switching (1-4 keys)
+        // Weapon switching (1-5 keys)
         document.addEventListener('keydown', (e) => {
             switch (e.code) {
                 case 'Digit1': this.switchWeapon('RIFLE'); break;
                 case 'Digit2': this.switchWeapon('SMG'); break;
                 case 'Digit3': this.switchWeapon('SHOTGUN'); break;
                 case 'Digit4': this.switchWeapon('PISTOL'); break;
+                case 'Digit5': this.switchWeapon('SNIPER'); break;
                 case 'KeyR': this.reload(); break;
             }
         });
+
+        // Scroll wheel for scope zoom adjustment (PUBG-style)
+        document.addEventListener('wheel', (e) => {
+            if (this.isScoped && this.weapon.hasScope) {
+                e.preventDefault();
+                const zoomStep = 0.5; // Zoom increment per scroll
+                if (e.deltaY < 0) {
+                    // Scroll up = zoom in
+                    this.targetScopeZoom = Math.min(this.maxScopeZoom, this.targetScopeZoom + zoomStep);
+                } else {
+                    // Scroll down = zoom out
+                    this.targetScopeZoom = Math.max(this.minScopeZoom, this.targetScopeZoom - zoomStep);
+                }
+            }
+        }, { passive: false });
     }
 
     switchWeapon(weaponKey) {
@@ -515,9 +561,43 @@ export class Shooting {
             this.gunModel.rotation.z = 0;
         }
 
-        // ADS transition
+        // ADS transition (use weapon-specific speed if available)
         const adsTarget = this.isAiming ? 1 : 0;
-        this.adsTransition += (adsTarget - this.adsTransition) * this.adsSpeed * dt;
+        const adsSpeedToUse = this.weapon.adsSpeed || this.adsSpeed;
+        this.adsTransition += (adsTarget - this.adsTransition) * adsSpeedToUse * dt;
+
+        // === Sniper Scope Overlay ===
+        if (this.weapon.hasScope) {
+            // Scope activates smoothly when ADS transition > 85%
+            const scopeThreshold = 0.85;
+            const newScopedState = this.adsTransition > scopeThreshold;
+
+            // Calculate scope opacity (0 to 1 based on transition)
+            const scopeOpacity = this.adsTransition > scopeThreshold
+                ? Math.min(1, (this.adsTransition - scopeThreshold) / (1 - scopeThreshold))
+                : 0;
+
+            // Notify HUD about scope change with opacity for smooth transition
+            if (this.onScopeChange) {
+                this.onScopeChange(newScopedState, scopeOpacity);
+            }
+
+            // Hide gun model when fully scoped (for clean scope view)
+            if (this.gunModel) {
+                this.gunModel.visible = this.adsTransition < 0.95;
+            }
+
+            this.isScoped = newScopedState;
+        } else {
+            // Non-scoped weapon - ensure scope is hidden and gun is visible
+            if (this.isScoped && this.onScopeChange) {
+                this.onScopeChange(false, 0);
+            }
+            this.isScoped = false;
+            if (this.gunModel) {
+                this.gunModel.visible = true;
+            }
+        }
 
         // Update gun position (lerp between hip and ADS) - only if not in reload animation
         if (this.gunModel && !this.isReloading) {
@@ -526,9 +606,21 @@ export class Shooting {
             this.gunModel.rotation.x = 0;
         }
 
-        // Update FOV for zoom
-        const targetFOV = this.defaultFOV / (1 + (this.weapon.adsZoom - 1) * this.adsTransition);
-        this.currentFOV += (targetFOV - this.currentFOV) * this.adsSpeed * dt;
+        // Update FOV for zoom (with dynamic scope zoom support)
+        let effectiveZoom = this.weapon.adsZoom;
+
+        // For scoped weapons, smoothly interpolate to target zoom level
+        if (this.weapon.hasScope && this.isScoped) {
+            // Smoothly interpolate current zoom to target
+            this.scopeZoomLevel += (this.targetScopeZoom - this.scopeZoomLevel) * 8 * dt;
+            effectiveZoom = this.scopeZoomLevel;
+        } else if (this.weapon.hasScope) {
+            // Reset zoom when not scoped
+            this.scopeZoomLevel = this.targetScopeZoom;
+        }
+
+        const targetFOV = this.defaultFOV / (1 + (effectiveZoom - 1) * this.adsTransition);
+        this.currentFOV += (targetFOV - this.currentFOV) * adsSpeedToUse * dt;
         this.camera.fov = this.currentFOV;
         this.camera.updateProjectionMatrix();
 

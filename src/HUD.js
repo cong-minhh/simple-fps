@@ -24,7 +24,10 @@ export class HUD {
             respawnTimer: document.getElementById('respawn-timer'),
             respawnKillerName: document.getElementById('respawn-killer-name'),
             playerCount: document.getElementById('player-count'),
-            playerCountText: document.getElementById('player-count-text')
+            playerCountText: document.getElementById('player-count-text'),
+            // Scope overlay (sniper)
+            scopeOverlay: document.getElementById('scope-overlay'),
+            crosshair: document.getElementById('crosshair')
         };
 
         this.startTime = 0;
@@ -100,7 +103,7 @@ export class HUD {
 
         // Update weapon selector highlight
         const weaponSlots = document.querySelectorAll('.weapon-slot');
-        const weaponNames = ['Rifle', 'SMG', 'Shotgun', 'Pistol'];
+        const weaponNames = ['Rifle', 'SMG', 'Shotgun', 'Pistol', 'Sniper'];
         weaponSlots.forEach((slot, index) => {
             if (weaponNames[index] === weapon.name) {
                 slot.classList.add('active');
@@ -156,6 +159,27 @@ export class HUD {
             progressEl.style.setProperty('--progress', `${percent}%`);
         } else {
             indicator.classList.add('hidden');
+        }
+    }
+
+    // Show/hide sniper scope overlay with smooth opacity
+    updateScopeOverlay(isScoped, opacity = 1) {
+        const scope = this.elements.scopeOverlay;
+        const crosshair = this.elements.crosshair;
+
+        if (!scope) return;
+
+        if (isScoped) {
+            scope.classList.remove('hidden');
+            scope.classList.add('active');
+            scope.style.opacity = opacity;
+            // Hide crosshair when scoped
+            if (crosshair) crosshair.style.opacity = '0';
+        } else {
+            scope.classList.remove('active');
+            scope.style.opacity = '0';
+            // Show crosshair when not scoped
+            if (crosshair) crosshair.style.opacity = '0.8';
         }
     }
 
