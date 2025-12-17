@@ -54,6 +54,7 @@ class Game {
         this.waveManager.initProjectiles(this.scene);
         this.shooting.setPlayer(this.player);
         this.shooting.setArena(this.arena);
+        this.shooting.setCanvas(this.renderer.domElement); // For Chrome wheel events
 
         // Initialize bullet tracer system for visual feedback
         this.bulletTracerManager = new BulletTracerManager(this.scene, this.camera);
@@ -662,11 +663,11 @@ class Game {
     }
 
     // Convert slider value (1-10) to actual mouse sensitivity
-    // Slider 1 = 0.0008 (very slow), Slider 5 = 0.002 (default), Slider 10 = 0.004 (very fast)
+    // Slider 1 = 0.001 (very slow), Slider 5 = 0.003 (default), Slider 10 = 0.01 (very fast)
+    // Higher max for Firefox which reports smaller movement values
     sliderToSensitivity(sliderValue) {
-        // Linear mapping: 1 -> 0.0008, 10 -> 0.004
-        const minSens = 0.0008;
-        const maxSens = 0.004;
+        const minSens = 0.001;
+        const maxSens = 0.01; // Increased for Firefox compatibility
         const normalized = (sliderValue - 1) / 9; // 0 to 1
         return minSens + normalized * (maxSens - minSens);
     }

@@ -126,6 +126,7 @@ export class Shooting {
         this.camera = camera;
         this.scene = scene;
         this.arena = null; // Set via setArena() for wall collision checking
+        this.canvas = null; // Canvas element for wheel events (Chrome fix)
 
         // Current weapon
         this.currentWeaponKey = 'RIFLE';
@@ -242,20 +243,29 @@ export class Shooting {
             }
         });
 
-        // Scroll wheel for scope zoom adjustment (PUBG-style)
-        document.addEventListener('wheel', (e) => {
-            if (this.isScoped && this.weapon.hasScope) {
+        // Scroll wheel handler for scope zoom (initialized when canvas is set)
+        this.wheelHandler = (e) => {
+            // Work as soon as aiming starts (not waiting for full scope)
+            if (this.isAiming && this.weapon.hasScope) {
                 e.preventDefault();
-                const zoomStep = 0.5; // Zoom increment per scroll
+                e.stopPropagation();
+                const zoomStep = 0.5;
                 if (e.deltaY < 0) {
-                    // Scroll up = zoom in
                     this.targetScopeZoom = Math.min(this.maxScopeZoom, this.targetScopeZoom + zoomStep);
-                } else {
-                    // Scroll down = zoom out
+                } else if (e.deltaY > 0) {
                     this.targetScopeZoom = Math.max(this.minScopeZoom, this.targetScopeZoom - zoomStep);
                 }
             }
-        }, { passive: false });
+        };
+    }
+
+    // Set canvas for wheel events (fixes Chrome pointer lock issue)
+    setCanvas(canvas) {
+        this.canvas = canvas;
+        // Chrome needs wheel listener directly on locked element
+        canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
+        // Also add to document as fallback for Firefox
+        document.addEventListener('wheel', this.wheelHandler, { passive: false });
     }
 
     switchWeapon(weaponKey) {
