@@ -363,11 +363,6 @@ class Game {
             this.hud.updateScoreboard(scores, this.network.getPlayerId());
         };
 
-        // Team score updates (TDM mode)
-        this.multiplayerManager.onTeamScoreUpdate = (teamScores) => {
-            this.hud.updateTeamScores(teamScores);
-        };
-
         // Kill feed
         this.multiplayerManager.onKillFeed = (killFeed) => {
             if (killFeed.length > 0) {
@@ -397,13 +392,12 @@ class Game {
             // Update lobby if in lobby
             if (this.state === STATES.MULTIPLAYER_LOBBY) {
                 const players = Array.from(this.multiplayerManager.remotePlayers.values())
-                    .map(p => ({ id: p.id, name: p.name, color: p.color, team: p.team }));
+                    .map(p => ({ id: p.id, name: p.name, color: p.color }));
                 // Add local player
                 players.unshift({
                     id: this.network.getPlayerId(),
                     name: 'You',
-                    color: 0x00ffaa,
-                    team: this.multiplayerManager.getLocalPlayerTeam()
+                    color: 0x00ffaa
                 });
                 this.menu.updatePlayerList(players, this.network.getPlayerId());
             }
@@ -504,13 +498,8 @@ class Game {
         this.shooting.reset();
         this.hud.reset();
 
-        // Set HUD to multiplayer mode with game mode and team info
-        const gameMode = this.multiplayerManager.getGameMode();
-        const localTeam = this.multiplayerManager.getLocalPlayerTeam();
-        this.hud.setMultiplayerMode(true, this.network.getPlayerId(), gameMode, localTeam);
-
-        // Update team scores initially
-        this.hud.updateTeamScores(this.multiplayerManager.getTeamScores());
+        // Set HUD to multiplayer mode
+        this.hud.setMultiplayerMode(true, this.network.getPlayerId());
 
         this.menu.hideAll();
         this.hud.show();

@@ -24,9 +24,7 @@ export class HUD {
             respawnTimer: document.getElementById('respawn-timer'),
             respawnKillerName: document.getElementById('respawn-killer-name'),
             playerCount: document.getElementById('player-count'),
-            playerCountText: document.getElementById('player-count-text'),
-            // Team score elements (will be created dynamically)
-            teamScoreDisplay: null
+            playerCountText: document.getElementById('player-count-text')
         };
 
         this.startTime = 0;
@@ -43,14 +41,9 @@ export class HUD {
         // Multiplayer state
         this.isMultiplayer = false;
         this.localPlayerId = null;
-        this.gameMode = null;
-        this.localPlayerTeam = null;
 
         // Setup scoreboard toggle
         this.setupScoreboardListeners();
-
-        // Create team score display element
-        this.createTeamScoreDisplay();
     }
 
     setupScoreboardListeners() {
@@ -69,33 +62,9 @@ export class HUD {
         });
     }
 
-    createTeamScoreDisplay() {
-        // Create a container for team scores at top center
-        const container = document.createElement('div');
-        container.id = 'team-score-display';
-        container.className = 'hidden';
-        container.innerHTML = `
-            <div class="team-score alpha">
-                <span class="team-label">ALPHA</span>
-                <span class="team-score-value" id="alpha-score">0</span>
-            </div>
-            <div class="team-divider">VS</div>
-            <div class="team-score bravo">
-                <span class="team-label">BRAVO</span>
-                <span class="team-score-value" id="bravo-score">0</span>
-            </div>
-        `;
-        document.body.appendChild(container);
-        this.elements.teamScoreDisplay = container;
-        this.elements.alphaScore = document.getElementById('alpha-score');
-        this.elements.bravoScore = document.getElementById('bravo-score');
-    }
-
-    setMultiplayerMode(enabled, localPlayerId = null, gameMode = null, localPlayerTeam = null) {
+    setMultiplayerMode(enabled, localPlayerId = null) {
         this.isMultiplayer = enabled;
         this.localPlayerId = localPlayerId;
-        this.gameMode = gameMode;
-        this.localPlayerTeam = localPlayerTeam;
 
         // Show/hide multiplayer-specific elements
         if (this.elements.playerCount) {
@@ -108,29 +77,6 @@ export class HUD {
         }
         if (this.elements.enemies) {
             this.elements.enemies.style.display = enabled ? 'none' : 'block';
-        }
-
-        // Show team score display in team modes
-        const isTeamMode = gameMode === 'team_deathmatch';
-        if (this.elements.teamScoreDisplay) {
-            this.elements.teamScoreDisplay.classList.toggle('hidden', !enabled || !isTeamMode);
-        }
-
-        // Highlight local player's team
-        if (localPlayerTeam && this.elements.teamScoreDisplay) {
-            const alphaEl = this.elements.teamScoreDisplay.querySelector('.team-score.alpha');
-            const bravoEl = this.elements.teamScoreDisplay.querySelector('.team-score.bravo');
-            if (alphaEl) alphaEl.classList.toggle('local-team', localPlayerTeam === 'alpha');
-            if (bravoEl) bravoEl.classList.toggle('local-team', localPlayerTeam === 'bravo');
-        }
-    }
-
-    updateTeamScores(teamScores) {
-        if (this.elements.alphaScore && teamScores.alpha !== undefined) {
-            this.elements.alphaScore.textContent = teamScores.alpha;
-        }
-        if (this.elements.bravoScore && teamScores.bravo !== undefined) {
-            this.elements.bravoScore.textContent = teamScores.bravo;
         }
     }
 

@@ -46,7 +46,6 @@ export class RemotePlayer {
         this.id = playerData.id;
         this.name = playerData.name;
         this.color = playerData.color || 0xff4444;
-        this.team = playerData.team || null; // Team assignment for TDM
 
         // State
         this.health = playerData.health || 100;
