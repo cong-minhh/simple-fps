@@ -303,6 +303,15 @@ export const SPATIAL_HASH = {
 };
 
 /**
+ * Static geometry batching settings
+ */
+export const BATCHING = {
+    ENABLED: true,          // Enable geometry batching for static objects
+    BATCH_WALLS: true,      // Merge wall geometries
+    BATCH_BOUNDARY: true    // Merge boundary wall geometries
+};
+
+/**
  * Environmental hazard configurations
  */
 export const HAZARDS = {

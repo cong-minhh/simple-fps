@@ -2,8 +2,106 @@
 import * as THREE from 'three';
 
 /**
+ * Binary Heap implementation for O(log n) priority queue operations
+ */
+class BinaryHeap {
+    constructor() {
+        this.heap = [];
+        this.positions = new Map(); // key -> index in heap for O(1) lookup
+    }
+
+    size() {
+        return this.heap.length;
+    }
+
+    isEmpty() {
+        return this.heap.length === 0;
+    }
+
+    contains(key) {
+        return this.positions.has(key);
+    }
+
+    push(node) {
+        this.heap.push(node);
+        this.positions.set(node.key, this.heap.length - 1);
+        this._bubbleUp(this.heap.length - 1);
+    }
+
+    pop() {
+        if (this.heap.length === 0) return null;
+        const result = this.heap[0];
+        this.positions.delete(result.key);
+
+        const last = this.heap.pop();
+        if (this.heap.length > 0) {
+            this.heap[0] = last;
+            this.positions.set(last.key, 0);
+            this._bubbleDown(0);
+        }
+        return result;
+    }
+
+    updatePriority(key, newF) {
+        const idx = this.positions.get(key);
+        if (idx === undefined) return false;
+        const oldF = this.heap[idx].f;
+        this.heap[idx].f = newF;
+        if (newF < oldF) {
+            this._bubbleUp(idx);
+        } else {
+            this._bubbleDown(idx);
+        }
+        return true;
+    }
+
+    clear() {
+        this.heap.length = 0;
+        this.positions.clear();
+    }
+
+    _bubbleUp(idx) {
+        const node = this.heap[idx];
+        while (idx > 0) {
+            const parentIdx = (idx - 1) >> 1;
+            const parent = this.heap[parentIdx];
+            if (node.f >= parent.f) break;
+            this.heap[idx] = parent;
+            this.positions.set(parent.key, idx);
+            idx = parentIdx;
+        }
+        this.heap[idx] = node;
+        this.positions.set(node.key, idx);
+    }
+
+    _bubbleDown(idx) {
+        const length = this.heap.length;
+        const node = this.heap[idx];
+        while (true) {
+            const leftIdx = (idx << 1) + 1;
+            const rightIdx = leftIdx + 1;
+            let smallest = idx;
+
+            if (leftIdx < length && this.heap[leftIdx].f < this.heap[smallest].f) {
+                smallest = leftIdx;
+            }
+            if (rightIdx < length && this.heap[rightIdx].f < this.heap[smallest].f) {
+                smallest = rightIdx;
+            }
+            if (smallest === idx) break;
+
+            this.heap[idx] = this.heap[smallest];
+            this.positions.set(this.heap[idx].key, idx);
+            idx = smallest;
+        }
+        this.heap[idx] = node;
+        this.positions.set(node.key, idx);
+    }
+}
+
+/**
  * High-performance grid-based A* pathfinding
- * Uses typed arrays and object pooling to minimize GC
+ * Uses binary heap priority queue and spatial hashing for optimal performance
  */
 export class Pathfinding {
     constructor(arena, cellSize = 0.5) {
@@ -21,12 +119,23 @@ export class Pathfinding {
         // Build initial grid from colliders
         this.buildGrid();
 
-        // Object pools to avoid GC during pathfinding
-        this._openSet = [];
+        // Optimized data structures for A*
+        this._openHeap = new BinaryHeap(); // O(log n) priority queue
         this._closedSet = new Set();
         this._cameFrom = new Map();
         this._gScore = new Map();
-        this._fScore = new Map();
+
+        // Pre-computed neighbor offsets (8-directional)
+        this._neighbors = [
+            { dx: 1, dz: 0, cost: 1 },
+            { dx: -1, dz: 0, cost: 1 },
+            { dx: 0, dz: 1, cost: 1 },
+            { dx: 0, dz: -1, cost: 1 },
+            { dx: 1, dz: 1, cost: 1.414 },
+            { dx: -1, dz: 1, cost: 1.414 },
+            { dx: 1, dz: -1, cost: 1.414 },
+            { dx: -1, dz: -1, cost: 1.414 }
+        ];
 
         // Reusable vectors
         this._tempVec = new THREE.Vector3();
@@ -140,62 +249,38 @@ export class Pathfinding {
             end = nearEnd;
         }
 
-        // Clear pools
-        this._openSet.length = 0;
+        // Clear data structures
+        this._openHeap.clear();
         this._closedSet.clear();
         this._cameFrom.clear();
         this._gScore.clear();
-        this._fScore.clear();
 
         const startKey = this.cellKey(start.x, start.z);
         const endKey = this.cellKey(end.x, end.z);
+        const startF = this.heuristic(start.x, start.z, end.x, end.z);
 
-        this._openSet.push({ x: start.x, z: start.z, key: startKey });
+        // Push start node with f-score
+        this._openHeap.push({ x: start.x, z: start.z, key: startKey, f: startF });
         this._gScore.set(startKey, 0);
-        this._fScore.set(startKey, this.heuristic(start.x, start.z, end.x, end.z));
-
-        // 8-directional neighbors (diagonal movement allowed)
-        const neighbors = [
-            { dx: 1, dz: 0, cost: 1 },
-            { dx: -1, dz: 0, cost: 1 },
-            { dx: 0, dz: 1, cost: 1 },
-            { dx: 0, dz: -1, cost: 1 },
-            { dx: 1, dz: 1, cost: 1.414 },
-            { dx: -1, dz: 1, cost: 1.414 },
-            { dx: 1, dz: -1, cost: 1.414 },
-            { dx: -1, dz: -1, cost: 1.414 }
-        ];
 
         let iterations = 0;
-        const maxIterations = 2000; // Increased for better path coverage
+        const maxIterations = 2000;
 
-        while (this._openSet.length > 0 && iterations < maxIterations) {
+        while (!this._openHeap.isEmpty() && iterations < maxIterations) {
             iterations++;
 
-            // Find node with lowest fScore (simple min search - fast for small grids)
-            let lowestIdx = 0;
-            let lowestF = this._fScore.get(this._openSet[0].key);
-            for (let i = 1; i < this._openSet.length; i++) {
-                const f = this._fScore.get(this._openSet[i].key);
-                if (f < lowestF) {
-                    lowestF = f;
-                    lowestIdx = i;
-                }
-            }
-
-            const current = this._openSet[lowestIdx];
+            // Pop node with lowest f-score - O(log n) with binary heap
+            const current = this._openHeap.pop();
 
             // Reached goal
             if (current.key === endKey) {
                 return this.reconstructPath(current.key);
             }
 
-            // Move from open to closed
-            this._openSet.splice(lowestIdx, 1);
             this._closedSet.add(current.key);
 
-            // Check all neighbors
-            for (const n of neighbors) {
+            // Check all neighbors using pre-computed offsets
+            for (const n of this._neighbors) {
                 const nx = current.x + n.dx;
                 const nz = current.z + n.dz;
 
@@ -213,16 +298,22 @@ export class Pathfinding {
                 }
 
                 const tentativeG = this._gScore.get(current.key) + n.cost;
+                const existingG = this._gScore.get(nKey);
 
-                const inOpenSet = this._openSet.some(node => node.key === nKey);
+                // O(1) check if in open set using heap's Map
+                const inOpenSet = this._openHeap.contains(nKey);
 
-                if (!inOpenSet || tentativeG < (this._gScore.get(nKey) || Infinity)) {
+                if (existingG === undefined || tentativeG < existingG) {
                     this._cameFrom.set(nKey, current.key);
                     this._gScore.set(nKey, tentativeG);
-                    this._fScore.set(nKey, tentativeG + this.heuristic(nx, nz, end.x, end.z));
+                    const newF = tentativeG + this.heuristic(nx, nz, end.x, end.z);
 
-                    if (!inOpenSet) {
-                        this._openSet.push({ x: nx, z: nz, key: nKey });
+                    if (inOpenSet) {
+                        // Update existing node's priority - O(log n)
+                        this._openHeap.updatePriority(nKey, newF);
+                    } else {
+                        // Add new node - O(log n)
+                        this._openHeap.push({ x: nx, z: nz, key: nKey, f: newF });
                     }
                 }
             }

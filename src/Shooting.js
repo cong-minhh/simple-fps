@@ -77,6 +77,10 @@ export class Shooting {
         // Last bullet trajectory data for network sync
         this.lastBulletData = { origin: null, target: null };
 
+        // Muzzle flash pooling state (replaces setTimeout)
+        this._muzzleFlashActiveTime = 0;
+        this._muzzleFlashDuration = 50; // ms to show flash
+
         // Hit effect particle pool (performance optimization)
         this._hitEffectPool = [];
         this._hitEffectPoolSize = 20;
@@ -552,6 +556,14 @@ export class Shooting {
         if (this.isShooting && this.weapon.automatic) {
             this.tryShoot();
         }
+
+        // Muzzle flash deactivation (pooled - replaces setTimeout)
+        if (this.muzzleFlashSprite && this.muzzleFlashSprite.visible) {
+            const flashElapsed = now - this._muzzleFlashActiveTime;
+            if (flashElapsed >= this._muzzleFlashDuration) {
+                this.muzzleFlashSprite.visible = false;
+            }
+        }
     }
 
     /**
@@ -901,19 +913,16 @@ export class Shooting {
 
     showMuzzleFlash() {
         // Use 3D muzzle flash sprite attached to gun barrel
+        // Pooled approach: track activation time instead of using setTimeout
         if (this.muzzleFlashSprite) {
             this.muzzleFlashSprite.visible = true;
+            this._muzzleFlashActiveTime = performance.now();
+
             // Random rotation and slight scale variation for visual variety
             this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
             const scale = 0.12 + Math.random() * 0.06;
             this.muzzleFlashSprite.scale.set(scale, scale, scale);
-
-            // Hide after brief flash
-            setTimeout(() => {
-                if (this.muzzleFlashSprite) {
-                    this.muzzleFlashSprite.visible = false;
-                }
-            }, 50);
+            // Flash will be hidden in update() after _muzzleFlashDuration ms
         }
     }
 

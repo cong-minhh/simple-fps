@@ -238,10 +238,10 @@ export class Arena {
     }
 
     createSkybox() {
-        // Dark gradient sky - reduced segments for performance
+        // Brighter sky for better visibility
         const skyGeometry = new THREE.SphereGeometry(100, 16, 12);
         const skyMaterial = new THREE.MeshBasicMaterial({
-            color: 0x0a0a1a,
+            color: 0x2a3040,
             side: THREE.BackSide
         });
         const sky = new THREE.Mesh(skyGeometry, skyMaterial);
@@ -249,41 +249,52 @@ export class Arena {
     }
 
     addAtmosphere() {
-        // Fog for atmosphere
-        this.scene.fog = new THREE.Fog(0x0a0a1a, 15, 50);
+        // Fog for atmosphere - pushed back for better visibility
+        this.scene.fog = new THREE.Fog(0x1a1a2e, 25, 70);
 
-        // Ambient light boost
-        const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+        // Strong ambient light for base visibility
+        const ambientLight = new THREE.AmbientLight(0x6080a0, 1.2);
         this.scene.add(ambientLight);
 
-        // Colored flickering point lights for industrial atmosphere
+        // Main directional light (like a sun/overhead light)
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 10);
+        directionalLight.castShadow = true;
+        this.scene.add(directionalLight);
+
+        // Secondary fill light from opposite direction
+        const fillLight = new THREE.DirectionalLight(0x8090ff, 0.4);
+        fillLight.position.set(-10, 15, -10);
+        this.scene.add(fillLight);
+
+        // Colored flickering point lights for industrial atmosphere - increased intensity
         const lightColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffaa00];
         const lightPositions = [[-8, 3, -8], [8, 3, -8], [-8, 3, 8], [8, 3, 8]];
 
         lightPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(lightColors[i], 0.3, 15);
+            const light = new THREE.PointLight(lightColors[i], 0.8, 20);
             light.position.set(...pos);
             this.scene.add(light);
 
             // Add to flickering lights for animation
             this.flickeringLights.push({
                 light: light,
-                baseIntensity: 0.3,
+                baseIntensity: 0.8,
                 flickerSpeed: 3 + i * 0.7, // Deterministic instead of random
                 phase: i * 1.57 // Deterministic phase offset (PI/2 steps)
             });
         });
 
-        // Add extra warning lights near hazards
+        // Add extra warning lights near hazards - increased intensity
         const warningPositions = [[-8, 2, 0], [8, 2, 0], [0, 2, -9]];
         warningPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(0xff0000, 0.4, 6);
+            const light = new THREE.PointLight(0xff0000, 0.8, 10);
             light.position.set(...pos);
             this.scene.add(light);
 
             this.flickeringLights.push({
                 light: light,
-                baseIntensity: 0.4,
+                baseIntensity: 0.8,
                 flickerSpeed: 8 + i * 0.5, // Deterministic
                 phase: i * 2.09 // Deterministic (2PI/3 steps)
             });
