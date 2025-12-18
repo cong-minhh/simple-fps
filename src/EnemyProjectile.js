@@ -1,10 +1,11 @@
 // EnemyProjectile.js - Performance-optimized pooled projectile system for enemies
 import * as THREE from 'three';
+import { POOL_SIZES, PROJECTILE } from './config/RenderConfig.js';
 
-// Pool configuration
-const POOL_SIZE = 50;
-const PROJECTILE_SPEED = 15;
-const PROJECTILE_LIFETIME = 3; // seconds
+// Pool configuration from centralized config
+const POOL_SIZE = POOL_SIZES.ENEMY_PROJECTILES;
+const PROJECTILE_SPEED = PROJECTILE.SPEED;
+const PROJECTILE_LIFETIME = PROJECTILE.LIFETIME;
 
 /**
  * Manages all enemy projectiles with object pooling to minimize GC

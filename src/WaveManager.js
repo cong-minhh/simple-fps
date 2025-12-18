@@ -2,47 +2,24 @@
 import { Enemy, ENEMY_TYPES } from './Enemy.js';
 import { Pathfinding } from './Pathfinding.js';
 import { EnemyProjectileManager } from './EnemyProjectile.js';
-
-// Wave configuration - what spawns when
-const WAVE_CONFIG = [
-    // Wave 1: Easy start
-    { enemies: ['NORMAL', 'NORMAL'], spawnDelay: 500 },
-    // Wave 2: More normals
-    { enemies: ['NORMAL', 'NORMAL', 'NORMAL'], spawnDelay: 400 },
-    // Wave 3: Introduce runners
-    { enemies: ['NORMAL', 'RUNNER', 'RUNNER'], spawnDelay: 400 },
-    // Wave 4: First tank
-    { enemies: ['TANK', 'NORMAL', 'NORMAL', 'RUNNER'], spawnDelay: 350 },
-    // Wave 5: Mixed
-    { enemies: ['NORMAL', 'NORMAL', 'RUNNER', 'RUNNER', 'RUNNER'], spawnDelay: 300 },
-    // Wave 6: Berserkers - they can leap now!
-    { enemies: ['BERSERKER', 'BERSERKER', 'NORMAL', 'RUNNER'], spawnDelay: 300 },
-    // Wave 7: Introduce SNIPER
-    { enemies: ['SNIPER', 'TANK', 'NORMAL', 'NORMAL', 'RUNNER'], spawnDelay: 250 },
-    // Wave 8: Swarm
-    { enemies: ['RUNNER', 'RUNNER', 'RUNNER', 'RUNNER', 'RUNNER', 'BERSERKER'], spawnDelay: 200 },
-    // Wave 9: Elite mix with snipers
-    { enemies: ['SNIPER', 'SNIPER', 'TANK', 'BERSERKER', 'RUNNER', 'RUNNER'], spawnDelay: 200 },
-    // Wave 10: Boss wave
-    { enemies: ['TANK', 'TANK', 'SNIPER', 'SNIPER', 'BERSERKER', 'BERSERKER', 'RUNNER'], spawnDelay: 150 },
-];
+import { WAVES, WAVE_CONFIG } from './config/GameConfig.js';
 
 export class WaveManager {
     constructor(scene, arena) {
         this.scene = scene;
         this.arena = arena;
 
-        // Wave settings - FASTER AND MORE INTENSE
+        // Wave settings - use centralized config
         this.currentWave = 1;
-        this.maxEnemies = 12; // Increased from 5
-        this.baseSpawnInterval = 3000; // Reduced from 8000ms to 3000ms
-        this.minSpawnInterval = 1000; // Minimum time between spawns
+        this.maxEnemies = WAVE_CONFIG.MAX_ENEMIES;
+        this.baseSpawnInterval = WAVE_CONFIG.BASE_SPAWN_INTERVAL;
+        this.minSpawnInterval = WAVE_CONFIG.MIN_SPAWN_INTERVAL;
         this.lastSpawnTime = 0;
         this.waveStartTime = 0;
 
         // Wave state
         this.waveEnemyQueue = []; // Enemies yet to spawn this wave
-        this.spawnDelay = 500; // Ms between individual spawns
+        this.spawnDelay = WAVE_CONFIG.SPAWN_DELAY_BETWEEN;
         this.lastIndividualSpawn = 0;
         this.waveCompleted = false;
         this.waveCooldown = 2000; // Brief pause between waves
@@ -92,8 +69,8 @@ export class WaveManager {
     }
 
     startWave(waveNum) {
-        this.currentWave = Math.min(waveNum, WAVE_CONFIG.length);
-        const config = WAVE_CONFIG[this.currentWave - 1];
+        this.currentWave = Math.min(waveNum, WAVES.length);
+        const config = WAVES[this.currentWave - 1];
 
         // Queue all enemies for this wave
         this.waveEnemyQueue = [...config.enemies];
@@ -218,7 +195,7 @@ export class WaveManager {
 
         // Start next wave after cooldown
         if (this.waveCompleted && currentTime - this.waveStartTime >= this.waveCooldown) {
-            if (this.currentWave < WAVE_CONFIG.length) {
+            if (this.currentWave < WAVES.length) {
                 this.startWave(this.currentWave + 1);
             } else {
                 // Endless mode: repeat last wave with scaling

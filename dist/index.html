@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vercel FPS: Low-Poly Arena</title>
   <meta name="description" content="A minimalistic low-poly FPS game - survive waves of enemies in a fast-paced arena!">
-  <script type="module" crossorigin src="/assets/index-BLz0SEbG.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/three-nq-n7KlS.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-6GVho4HQ.css">
+  <script type="module" crossorigin src="/assets/index-Dvv1gLeh.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/three-CWiGZQPh.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-CVWccuov.css">
 </head>
 
 <body>
@@ -128,6 +128,14 @@
         <div class="input-group">
           <label for="server-url">SERVER</label>
           <input type="text" id="server-url" placeholder="ws://localhost:8080" value="ws://localhost:8080">
+        </div>
+        <div class="input-group">
+          <label for="map-select">ARENA</label>
+          <select id="map-select">
+            <option value="WAREHOUSE">🏭 Warehouse (Indoor)</option>
+            <option value="COURTYARD">🏛️ Courtyard (Outdoor)</option>
+            <option value="BUNKER">🪖 Bunker (Underground)</option>
+          </select>
         </div>
       </div>
 

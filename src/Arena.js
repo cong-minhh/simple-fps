@@ -1,6 +1,8 @@
 
 // Arena.js - Creates the game arena with collision geometry (Optimized)
+// Includes LOD system and spatial partitioning for performance
 import * as THREE from 'three';
+import { LOD, SPATIAL_HASH } from './config/GameConfig.js';
 
 export class Arena {
     constructor(scene) {
@@ -21,6 +23,16 @@ export class Arena {
         // Settings flags
         this.flickerEnabled = true;
 
+        // === LOD SYSTEM ===
+        this.lodEnabled = LOD.ENABLED;
+        this.lodObjects = []; // Objects with LOD levels
+        this.lastLodUpdate = 0;
+        this.lodUpdateInterval = LOD.UPDATE_INTERVAL;
+
+        // === SPATIAL PARTITIONING (Grid-based) ===
+        this.collisionGrid = new Map();
+        this.gridCellSize = SPATIAL_HASH.COLLIDER_CELL_SIZE;
+
         // === SHARED MATERIALS (Performance: Create once, reuse) ===
         this._initSharedMaterials();
 
@@ -39,6 +51,127 @@ export class Arena {
         this.setupWaypoints();
         this.setupSpawnPoints();
         this.addAtmosphere();
+
+        // Build collision grid after all colliders are added
+        this._buildCollisionGrid();
+    }
+
+    // === SPATIAL PARTITIONING: Build grid from colliders ===
+    _buildCollisionGrid() {
+        this.collisionGrid.clear();
+        const cellSize = this.gridCellSize;
+
+        for (let i = 0; i < this.colliders.length; i++) {
+            const collider = this.colliders[i];
+            collider._index = i; // Track original index
+
+            // Get all cells this collider occupies
+            const minCX = Math.floor(collider.min.x / cellSize);
+            const maxCX = Math.floor(collider.max.x / cellSize);
+            const minCZ = Math.floor(collider.min.z / cellSize);
+            const maxCZ = Math.floor(collider.max.z / cellSize);
+
+            for (let cx = minCX; cx <= maxCX; cx++) {
+                for (let cz = minCZ; cz <= maxCZ; cz++) {
+                    const key = `${cx},${cz}`;
+                    if (!this.collisionGrid.has(key)) {
+                        this.collisionGrid.set(key, []);
+                    }
+                    this.collisionGrid.get(key).push(collider);
+                }
+            }
+        }
+    }
+
+    // === Get colliders near a position (O(1) lookup) ===
+    _getCollidersNear(x, z, radius = 0) {
+        const cellSize = this.gridCellSize;
+        const minCX = Math.floor((x - radius) / cellSize);
+        const maxCX = Math.floor((x + radius) / cellSize);
+        const minCZ = Math.floor((z - radius) / cellSize);
+        const maxCZ = Math.floor((z + radius) / cellSize);
+
+        const seen = new Set();
+        const result = [];
+
+        for (let cx = minCX; cx <= maxCX; cx++) {
+            for (let cz = minCZ; cz <= maxCZ; cz++) {
+                const key = `${cx},${cz}`;
+                const cell = this.collisionGrid.get(key);
+                if (cell) {
+                    for (const collider of cell) {
+                        if (!seen.has(collider._index)) {
+                            seen.add(collider._index);
+                            result.push(collider);
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    // === LOD: Register an object with LOD levels ===
+    _registerLOD(mesh, lodMeshes) {
+        this.lodObjects.push({
+            high: mesh,
+            medium: lodMeshes.medium || null,
+            low: lodMeshes.low || null,
+            currentLevel: 'high',
+            position: mesh.position.clone()
+        });
+    }
+
+    // === LOD: Update LOD levels and frustum culling based on camera ===
+    updateLOD(cameraPos, camera = null) {
+        if (!this.lodEnabled) return;
+
+        const now = performance.now();
+        if (now - this.lastLodUpdate < this.lodUpdateInterval) return;
+        this.lastLodUpdate = now;
+
+        // Create frustum for culling if camera provided
+        let frustum = null;
+        if (camera) {
+            if (!this._frustum) {
+                this._frustum = new THREE.Frustum();
+                this._projScreenMatrix = new THREE.Matrix4();
+            }
+            this._projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            this._frustum.setFromProjectionMatrix(this._projScreenMatrix);
+            frustum = this._frustum;
+        }
+
+        for (const obj of this.lodObjects) {
+            const dx = obj.position.x - cameraPos.x;
+            const dz = obj.position.z - cameraPos.z;
+            const distSq = dx * dx + dz * dz;
+
+            // Frustum culling - hide objects outside view
+            if (frustum && obj.high) {
+                const inFrustum = frustum.containsPoint(obj.position);
+                const group = obj.high.parent || obj.high;
+                if (group.visible !== inFrustum) {
+                    group.visible = inFrustum;
+                }
+                if (!inFrustum) continue; // Skip LOD update for culled objects
+            }
+
+            let targetLevel = 'high';
+            if (distSq > LOD.MEDIUM_DISTANCE * LOD.MEDIUM_DISTANCE) {
+                targetLevel = 'low';
+            } else if (distSq > LOD.HIGH_DISTANCE * LOD.HIGH_DISTANCE) {
+                targetLevel = 'medium';
+            }
+
+            if (targetLevel !== obj.currentLevel) {
+                // Switch LOD level
+                if (obj.high) obj.high.visible = (targetLevel === 'high');
+                if (obj.medium) obj.medium.visible = (targetLevel === 'medium');
+                if (obj.low) obj.low.visible = (targetLevel === 'low');
+                obj.currentLevel = targetLevel;
+            }
+        }
     }
 
     _initSharedMaterials() {
@@ -559,7 +692,9 @@ export class Arena {
             )
         };
 
-        for (const collider of this.colliders) {
+        // Use spatial grid for O(1) lookup
+        const nearbyColliders = this._getCollidersNear(position.x, position.z, radius + 1);
+        for (const collider of nearbyColliders) {
             if (this.aabbIntersect(playerBox, collider)) {
                 return collider;
             }
@@ -585,7 +720,9 @@ export class Arena {
             z: testPos.z + radius
         };
 
-        for (const collider of this.colliders) {
+        // Use spatial grid for O(1) lookup
+        const nearbyColliders = this._getCollidersNear(testPos.x, testPos.z, radius + Math.abs(delta));
+        for (const collider of nearbyColliders) {
             if (playerMin.x <= collider.max.x && playerMax.x >= collider.min.x &&
                 playerMin.y <= collider.max.y && playerMax.y >= collider.min.y &&
                 playerMin.z <= collider.max.z && playerMax.z >= collider.min.z) {
@@ -624,7 +761,7 @@ export class Arena {
         return null;
     }
 
-    // === Check collision at specific position ===
+    // === Check collision at specific position (uses spatial grid) ===
     checkCollisionAt(position, radius, height) {
         const halfHeight = height / 2;
         const playerMin = {
@@ -638,7 +775,9 @@ export class Arena {
             z: position.z + radius
         };
 
-        for (const collider of this.colliders) {
+        // Use spatial grid for O(1) lookup
+        const nearbyColliders = this._getCollidersNear(position.x, position.z, radius + 1);
+        for (const collider of nearbyColliders) {
             if (playerMin.x <= collider.max.x && playerMax.x >= collider.min.x &&
                 playerMin.y <= collider.max.y && playerMax.y >= collider.min.y &&
                 playerMin.z <= collider.max.z && playerMax.z >= collider.min.z) {

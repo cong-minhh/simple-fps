@@ -259,8 +259,124 @@ export class Audio {
         createThud(0.95, 80, 0.1, 0.6);
     }
 
+    /**
+     * Play hit confirmation sound with body part feedback
+     * @param {string} hitType - 'body', 'headshot', or 'kill'
+     */
+    playHitConfirmation(hitType = 'body') {
+        if (!this.enabled || !this.context) return;
+
+        const ctx = this.context;
+        const now = ctx.currentTime;
+        const vol = this.masterVolume * 0.5;
+
+        // Hit type configurations
+        const hitConfigs = {
+            body: {
+                // Satisfying thunk sound
+                freq: 300,
+                freqEnd: 150,
+                duration: 0.08,
+                vol: 0.8,
+                clickFreq: 1200,
+                clickVol: 0.3
+            },
+            headshot: {
+                // Higher pitched, sharp crack
+                freq: 500,
+                freqEnd: 250,
+                duration: 0.1,
+                vol: 1.0,
+                clickFreq: 2000,
+                clickVol: 0.5
+            },
+            kill: {
+                // Deep satisfying confirmation
+                freq: 200,
+                freqEnd: 80,
+                duration: 0.15,
+                vol: 1.0,
+                clickFreq: 1500,
+                clickVol: 0.6
+            }
+        };
+
+        const config = hitConfigs[hitType] || hitConfigs.body;
+
+        // Primary impact tone
+        const impactOsc = ctx.createOscillator();
+        impactOsc.type = 'sine';
+        impactOsc.frequency.setValueAtTime(config.freq, now);
+        impactOsc.frequency.exponentialRampToValueAtTime(config.freqEnd, now + config.duration);
+
+        const impactGain = ctx.createGain();
+        impactGain.gain.setValueAtTime(vol * config.vol, now);
+        impactGain.gain.exponentialRampToValueAtTime(0.001, now + config.duration);
+
+        impactOsc.connect(impactGain);
+        impactGain.connect(ctx.destination);
+        impactOsc.start(now);
+        impactOsc.stop(now + config.duration);
+
+        // Click/snap transient
+        const clickLen = ctx.sampleRate * 0.015;
+        const clickBuf = ctx.createBuffer(1, clickLen, ctx.sampleRate);
+        const clickData = clickBuf.getChannelData(0);
+        for (let i = 0; i < clickLen; i++) {
+            clickData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (clickLen * 0.1));
+        }
+
+        const clickSrc = ctx.createBufferSource();
+        clickSrc.buffer = clickBuf;
+        const clickHP = ctx.createBiquadFilter();
+        clickHP.type = 'highpass';
+        clickHP.frequency.value = config.clickFreq;
+        const clickGain = ctx.createGain();
+        clickGain.gain.value = vol * config.clickVol;
+
+        clickSrc.connect(clickHP);
+        clickHP.connect(clickGain);
+        clickGain.connect(ctx.destination);
+        clickSrc.start(now);
+
+        // Extra ding for headshot
+        if (hitType === 'headshot') {
+            const dingOsc = ctx.createOscillator();
+            dingOsc.type = 'sine';
+            dingOsc.frequency.setValueAtTime(1200, now);
+            dingOsc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+
+            const dingGain = ctx.createGain();
+            dingGain.gain.setValueAtTime(vol * 0.4, now);
+            dingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+            dingOsc.connect(dingGain);
+            dingGain.connect(ctx.destination);
+            dingOsc.start(now + 0.02);
+            dingOsc.stop(now + 0.17);
+        }
+
+        // Extra thump for kill
+        if (hitType === 'kill') {
+            const killOsc = ctx.createOscillator();
+            killOsc.type = 'sine';
+            killOsc.frequency.setValueAtTime(60, now + 0.05);
+            killOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+
+            const killGain = ctx.createGain();
+            killGain.gain.setValueAtTime(vol * 0.6, now + 0.05);
+            killGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+            killOsc.connect(killGain);
+            killGain.connect(ctx.destination);
+            killOsc.start(now + 0.05);
+            killOsc.stop(now + 0.2);
+        }
+    }
+
+    // Backwards compatibility
     playHit() {
-        // Disabled - no hit sound
+        this.playHitConfirmation('body');
     }
 
     playPlayerHurt() {
@@ -366,8 +482,16 @@ export class Audio {
         this.masterVolume = Math.max(0, Math.min(1, volume));
     }
 
-    // Footstep sound - varies slightly each time
-    playFootstep(isSprinting = false) {
+    // Surface types for footstep sounds
+    static SURFACE_TYPES = {
+        CONCRETE: 'concrete',
+        METAL: 'metal',
+        GRASS: 'grass',
+        WATER: 'water'
+    };
+
+    // Footstep sound - varies by surface type
+    playFootstep(isSprinting = false, surfaceType = 'concrete') {
         if (!this.enabled || !this.context) return;
 
         const ctx = this.context;
@@ -377,13 +501,23 @@ export class Audio {
         // Random variation for natural feel
         const pitchVar = 0.9 + Math.random() * 0.2;
 
+        // Surface-specific sound characteristics
+        const surfaces = {
+            concrete: { thudFreq: 80, tapFreq: 600, tapQ: 2, thudVol: 1.0, tapVol: 0.6 },
+            metal: { thudFreq: 150, tapFreq: 1200, tapQ: 8, thudVol: 0.7, tapVol: 1.2 },
+            grass: { thudFreq: 50, tapFreq: 300, tapQ: 1, thudVol: 0.5, tapVol: 0.3 },
+            water: { thudFreq: 40, tapFreq: 200, tapQ: 0.5, thudVol: 0.4, tapVol: 0.8 }
+        };
+
+        const surface = surfaces[surfaceType] || surfaces.concrete;
+
         // Low thud component
         const thudOsc = ctx.createOscillator();
         thudOsc.type = 'sine';
-        thudOsc.frequency.setValueAtTime(80 * pitchVar, now);
-        thudOsc.frequency.exponentialRampToValueAtTime(40 * pitchVar, now + 0.08);
+        thudOsc.frequency.setValueAtTime(surface.thudFreq * pitchVar, now);
+        thudOsc.frequency.exponentialRampToValueAtTime(surface.thudFreq * 0.5 * pitchVar, now + 0.08);
         const thudGain = ctx.createGain();
-        thudGain.gain.setValueAtTime(vol, now);
+        thudGain.gain.setValueAtTime(vol * surface.thudVol, now);
         thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
         thudOsc.connect(thudGain);
         thudGain.connect(ctx.destination);
@@ -401,14 +535,82 @@ export class Audio {
         tapSrc.buffer = tapBuf;
         const tapFilter = ctx.createBiquadFilter();
         tapFilter.type = 'bandpass';
-        tapFilter.frequency.value = 600 * pitchVar;
-        tapFilter.Q.value = 2;
+        tapFilter.frequency.value = surface.tapFreq * pitchVar;
+        tapFilter.Q.value = surface.tapQ;
         const tapGain = ctx.createGain();
-        tapGain.gain.value = vol * 0.6;
+        tapGain.gain.value = vol * surface.tapVol;
         tapSrc.connect(tapFilter);
         tapFilter.connect(tapGain);
         tapGain.connect(ctx.destination);
         tapSrc.start(now);
+
+        // Water splash for water surface
+        if (surfaceType === 'water') {
+            const splashLen = ctx.sampleRate * 0.08;
+            const splashBuf = ctx.createBuffer(1, splashLen, ctx.sampleRate);
+            const splashData = splashBuf.getChannelData(0);
+            for (let i = 0; i < splashLen; i++) {
+                const t = i / splashLen;
+                splashData[i] = (Math.random() * 2 - 1) * Math.exp(-t * 5) * 0.5;
+            }
+            const splashSrc = ctx.createBufferSource();
+            splashSrc.buffer = splashBuf;
+            const splashLP = ctx.createBiquadFilter();
+            splashLP.type = 'lowpass';
+            splashLP.frequency.value = 400;
+            const splashGain = ctx.createGain();
+            splashGain.gain.value = vol * 0.5;
+            splashSrc.connect(splashLP);
+            splashLP.connect(splashGain);
+            splashGain.connect(ctx.destination);
+            splashSrc.start(now + 0.02);
+        }
+    }
+
+    // Weapon/item pickup sound
+    playPickup() {
+        if (!this.enabled || !this.context) return;
+
+        const ctx = this.context;
+        const now = ctx.currentTime;
+        const vol = this.masterVolume * 0.4;
+
+        // Rising tone - satisfying pickup feel
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.2);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.setValueAtTime(vol * 0.8, now + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+
+        // Metallic shimmer
+        const shimmerLen = ctx.sampleRate * 0.15;
+        const shimmerBuf = ctx.createBuffer(1, shimmerLen, ctx.sampleRate);
+        const shimmerData = shimmerBuf.getChannelData(0);
+        for (let i = 0; i < shimmerLen; i++) {
+            const t = i / shimmerLen;
+            shimmerData[i] = (Math.random() * 2 - 1) * Math.exp(-t * 8) * 0.3;
+        }
+        const shimmerSrc = ctx.createBufferSource();
+        shimmerSrc.buffer = shimmerBuf;
+        const shimmerHP = ctx.createBiquadFilter();
+        shimmerHP.type = 'highpass';
+        shimmerHP.frequency.value = 2000;
+        const shimmerGain = ctx.createGain();
+        shimmerGain.gain.value = vol * 0.6;
+        shimmerSrc.connect(shimmerHP);
+        shimmerHP.connect(shimmerGain);
+        shimmerGain.connect(ctx.destination);
+        shimmerSrc.start(now + 0.05);
     }
 
     // Jump takeoff sound

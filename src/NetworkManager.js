@@ -1,4 +1,6 @@
 // NetworkManager.js - WebSocket client for multiplayer communication
+import { Logger } from './utils/Logger.js';
+
 export class NetworkManager {
     constructor() {
         this.ws = null;
@@ -12,6 +14,16 @@ export class NetworkManager {
         // Position update throttling
         this.lastPositionUpdate = 0;
         this.positionUpdateInterval = 50; // 20 updates per second
+
+        // Reconnection state
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000; // Start with 1 second
+        this.maxReconnectDelay = 30000; // Max 30 seconds
+        this.lastServerUrl = null;
+        this.lastPlayerName = null;
+        this.isReconnecting = false;
+        this.serverShutdown = false;
     }
 
     connect(serverUrl, playerName) {
@@ -20,8 +32,13 @@ export class NetworkManager {
                 this.ws = new WebSocket(serverUrl);
 
                 this.ws.onopen = () => {
-                    console.log('Connected to server');
+                    Logger.info('Connected to server');
                     this.isConnected = true;
+                    this.reconnectAttempts = 0; // Reset on successful connection
+                    this.reconnectDelay = 1000;
+                    this.lastServerUrl = serverUrl;
+                    this.lastPlayerName = playerName;
+                    this.serverShutdown = false;
 
                     // Send join message
                     this.send({
@@ -44,18 +61,31 @@ export class NetworkManager {
                             resolve(message);
                         }
                     } catch (e) {
-                        console.error('Failed to parse message:', e);
+                        Logger.error('Failed to parse message:', e);
                     }
                 };
 
                 this.ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
+                    Logger.error('WebSocket error:', error);
                     reject(error);
                 };
 
-                this.ws.onclose = () => {
-                    console.log('Disconnected from server');
+                this.ws.onclose = (event) => {
+                    Logger.info('Disconnected from server', event.code, event.reason);
                     this.isConnected = false;
+
+                    // Handle server shutdown gracefully
+                    if (this.serverShutdown) {
+                        Logger.info('Server shutdown - not attempting reconnection');
+                        this.emit('server_shutdown');
+                        return;
+                    }
+
+                    // Attempt reconnection for unexpected disconnects
+                    if (!this.isReconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
+                        this.attemptReconnect();
+                    }
+
                     this.emit('disconnected');
                 };
             } catch (error) {
@@ -71,13 +101,81 @@ export class NetworkManager {
         }
         this.isConnected = false;
         this.playerId = null;
+        // Clear pending messages on disconnect
+        this.pendingMessages = [];
     }
 
+    /**
+     * Validate message structure before sending
+     * @param {Object} message - Message to validate
+     * @returns {boolean} True if valid
+     */
+    validateMessage(message) {
+        if (!message || typeof message !== 'object') return false;
+        if (!message.type || typeof message.type !== 'string') return false;
+
+        // Type-specific validation
+        switch (message.type) {
+            case 'position':
+                return message.position &&
+                    typeof message.position.x === 'number' &&
+                    typeof message.position.y === 'number' &&
+                    typeof message.position.z === 'number';
+            case 'hit':
+                return message.targetId &&
+                    typeof message.damage === 'number' &&
+                    message.damage > 0 && message.damage <= 500;
+            case 'shoot':
+                return message.weapon && typeof message.weapon === 'string';
+            default:
+                return true; // Allow other message types
+        }
+    }
+
+    /**
+     * Send message to server with validation
+     * @param {Object} message - Message to send
+     * @returns {boolean} True if sent successfully
+     */
     send(message) {
+        // Validate message structure
+        if (!this.validateMessage(message)) {
+            Logger.warn('Invalid message structure:', message);
+            return false;
+        }
+
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(message));
+            try {
+                this.ws.send(JSON.stringify(message));
+                return true;
+            } catch (error) {
+                Logger.error('Send error:', error);
+                return false;
+            }
         } else {
-            this.pendingMessages.push(message);
+            // Queue message if not connected (with limit to prevent memory issues)
+            const MAX_PENDING = 50;
+            if (this.pendingMessages.length < MAX_PENDING) {
+                this.pendingMessages.push(message);
+            } else {
+                Logger.warn('Pending message queue full, dropping message');
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Flush pending messages after reconnection
+     */
+    flushPendingMessages() {
+        if (!this.isConnected || this.pendingMessages.length === 0) return;
+
+        Logger.debug(`Flushing ${this.pendingMessages.length} pending messages`);
+        const messages = [...this.pendingMessages];
+        this.pendingMessages = [];
+
+        for (const message of messages) {
+            this.send(message);
         }
     }
 
@@ -85,6 +183,14 @@ export class NetworkManager {
         // Handle pong for latency calculation
         if (message.type === 'pong') {
             this.latency = Date.now() - message.timestamp;
+            return;
+        }
+
+        // Handle server shutdown notification
+        if (message.type === 'server_shutdown') {
+            Logger.info('Server shutdown notification received');
+            this.serverShutdown = true;
+            this.emit('server_shutdown', message);
             return;
         }
 
@@ -115,7 +221,7 @@ export class NetworkManager {
                 try {
                     callback(data);
                 } catch (e) {
-                    console.error(`Error in handler for ${type}:`, e);
+                    Logger.error(`Error in handler for ${type}:`, e);
                 }
             });
         }
@@ -128,6 +234,36 @@ export class NetworkManager {
                 this.send({ type: 'ping', timestamp: this.lastPingTime });
             }
         }, 2000);
+    }
+
+    attemptReconnect() {
+        if (this.isReconnecting || !this.lastServerUrl) return;
+
+        this.isReconnecting = true;
+        this.reconnectAttempts++;
+
+        // Exponential backoff
+        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+
+        Logger.info(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+        this.emit('reconnecting', { attempt: this.reconnectAttempts, delay });
+
+        setTimeout(async () => {
+            try {
+                await this.connect(this.lastServerUrl, this.lastPlayerName);
+                Logger.info('Reconnection successful');
+                this.isReconnecting = false;
+                this.emit('reconnected');
+            } catch (error) {
+                Logger.error('Reconnection failed:', error);
+                this.isReconnecting = false;
+
+                if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                    Logger.error('Max reconnection attempts reached');
+                    this.emit('reconnect_failed');
+                }
+            }
+        }, delay);
     }
 
     // Game-specific methods

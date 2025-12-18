@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 
 const PORT = process.env.PORT || 8080;
+const MAX_CONNECTIONS = parseInt(process.env.MAX_CONNECTIONS) || 100;
 
 // Game configuration
 const CONFIG = {
@@ -81,6 +82,49 @@ class Player {
         for (const type of Object.keys(RATE_LIMITS)) {
             this.rateLimits[type] = { lastTime: 0, count: 0, lastSecond: 0 };
         }
+
+        // Position history for lag compensation (last 500ms)
+        this.positionHistory = [];
+        this.maxHistoryAge = 500; // ms
+    }
+
+    /**
+     * Record current position to history
+     */
+    recordPosition() {
+        const now = Date.now();
+        this.positionHistory.push({
+            time: now,
+            position: { ...this.position },
+            rotation: { ...this.rotation }
+        });
+
+        // Prune old entries
+        while (this.positionHistory.length > 0 &&
+            now - this.positionHistory[0].time > this.maxHistoryAge) {
+            this.positionHistory.shift();
+        }
+    }
+
+    /**
+     * Get position at a specific time (for lag compensation)
+     * @param {number} targetTime - Timestamp to look up
+     * @returns {Object} Position at that time
+     */
+    getPositionAtTime(targetTime) {
+        if (this.positionHistory.length === 0) {
+            return this.position;
+        }
+
+        // Find the two entries that bracket the target time
+        for (let i = this.positionHistory.length - 1; i >= 0; i--) {
+            if (this.positionHistory[i].time <= targetTime) {
+                return this.positionHistory[i].position;
+            }
+        }
+
+        // Target time is before all history, return oldest
+        return this.positionHistory[0].position;
     }
 
     // Check rate limit for message type, returns true if allowed
@@ -330,9 +374,25 @@ class GameServer {
         this.rooms = new Map();
         this.playerToRoom = new Map();
         this.defaultRoom = this.createRoom('default');
+        this.isShuttingDown = false;
 
-        // Create HTTP server
+        // Create HTTP server with health check endpoint
         this.httpServer = createServer((req, res) => {
+            // Health check endpoint
+            if (req.url === '/health') {
+                const status = {
+                    status: 'ok',
+                    uptime: process.uptime(),
+                    rooms: this.rooms.size,
+                    players: Array.from(this.rooms.values())
+                        .reduce((sum, room) => sum + room.players.size, 0),
+                    connections: this.wss ? this.wss.clients.size : 0
+                };
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(status));
+                return;
+            }
+
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('FPS Multiplayer Server Running');
         });
@@ -342,6 +402,7 @@ class GameServer {
 
         this.setupWebSocket();
         this.startGameLoop();
+        this.setupGracefulShutdown();
     }
 
     createRoom(id) {
@@ -356,6 +417,19 @@ class GameServer {
 
     setupWebSocket() {
         this.wss.on('connection', (ws) => {
+            // Connection limit check
+            if (this.wss.clients.size > MAX_CONNECTIONS) {
+                ws.close(1013, 'Server at capacity');
+                console.log('Connection rejected: server at capacity');
+                return;
+            }
+
+            // Reject new connections during shutdown
+            if (this.isShuttingDown) {
+                ws.close(1001, 'Server shutting down');
+                return;
+            }
+
             const playerId = this.generatePlayerId();
             console.log(`Player ${playerId} connected`);
 
@@ -445,6 +519,9 @@ class GameServer {
         player.state = message.state || {}; // Store player state
         player.lastUpdate = Date.now();
 
+        // Record position for lag compensation
+        player.recordPosition();
+
         // Broadcast to others including state
         room.broadcast({
             type: 'player_position',
@@ -497,15 +574,23 @@ class GameServer {
             return; // Silently ignore (no console spam)
         }
 
-        // Apply damage
-        victim.health -= damage;
+        // === Enhanced Hit Validation ===
+        const validationResult = this.validateHit(attacker, victim, message);
+        if (!validationResult.valid) {
+            console.log(`Hit rejected: ${validationResult.reason}`);
+            return;
+        }
+
+        // Apply validated damage (may be reduced)
+        const finalDamage = Math.min(damage, damage * validationResult.damageMultiplier);
+        victim.health -= finalDamage;
 
         // Broadcast damage
         room.broadcast({
             type: 'player_damage',
             targetId: message.targetId,
             attackerId: playerId,
-            damage: damage,
+            damage: finalDamage,
             health: victim.health,
             isHeadshot: !!message.isHeadshot
         });
@@ -514,6 +599,75 @@ class GameServer {
         if (victim.health <= 0) {
             room.handleKill(playerId, message.targetId, !!message.isHeadshot);
         }
+    }
+
+    /**
+     * Validate a hit for anti-cheat and lag compensation
+     * @param {Player} attacker - Attacking player
+     * @param {Player} victim - Target player
+     * @param {Object} message - Hit message data
+     * @returns {Object} {valid: boolean, reason: string, damageMultiplier: number}
+     */
+    validateHit(attacker, victim, message) {
+        // Weapon range limits (generous for lag tolerance)
+        const WEAPON_RANGES = {
+            'RIFLE': 80,
+            'SMG': 40,
+            'SHOTGUN': 15,
+            'PISTOL': 50,
+            'SNIPER': 150
+        };
+
+        // Get attacker's current position
+        const attackerPos = attacker.position;
+
+        // Use lag compensation: get victim's position from ~100ms ago
+        const lagCompensatedTime = Date.now() - 100;
+        const victimPos = victim.getPositionAtTime(lagCompensatedTime);
+
+        // Calculate distance between players
+        const dx = attackerPos.x - victimPos.x;
+        const dy = attackerPos.y - victimPos.y;
+        const dz = attackerPos.z - victimPos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Get max range for weapon (with 15% tolerance for lag)
+        const weapon = attacker.weapon || 'RIFLE';
+        const maxRange = (WEAPON_RANGES[weapon] || 80) * 1.15;
+
+        // Check distance
+        if (distance > maxRange) {
+            return {
+                valid: false,
+                reason: `Distance ${distance.toFixed(1)} exceeds max range ${maxRange.toFixed(1)} for ${weapon}`,
+                damageMultiplier: 0
+            };
+        }
+
+        // Basic line-of-sight check (just check height difference isn't absurd)
+        if (Math.abs(dy) > 5) {
+            return {
+                valid: false,
+                reason: `Height difference ${Math.abs(dy).toFixed(1)} too large`,
+                damageMultiplier: 0
+            };
+        }
+
+        // Apply distance-based damage falloff for some weapons
+        let damageMultiplier = 1.0;
+        if (weapon === 'SHOTGUN' && distance > 8) {
+            // Shotgun damage falls off beyond 8 units
+            damageMultiplier = Math.max(0.3, 1 - (distance - 8) / 12);
+        } else if (weapon === 'SMG' && distance > 25) {
+            // SMG damage falls off beyond 25 units
+            damageMultiplier = Math.max(0.5, 1 - (distance - 25) / 30);
+        }
+
+        return {
+            valid: true,
+            reason: 'ok',
+            damageMultiplier
+        };
     }
 
     handleWeaponChange(playerId, message) {
@@ -586,12 +740,49 @@ class GameServer {
         }, CONFIG.TIMEOUT_CHECK_INTERVAL);
     }
 
+    setupGracefulShutdown() {
+        const shutdown = (signal) => {
+            if (this.isShuttingDown) return;
+            this.isShuttingDown = true;
+
+            console.log(`\n${signal} received. Starting graceful shutdown...`);
+
+            // Notify all players
+            this.rooms.forEach(room => {
+                room.broadcast({ type: 'server_shutdown', message: 'Server is shutting down' });
+            });
+
+            // Close WebSocket server (stop accepting new connections)
+            this.wss.close(() => {
+                console.log('WebSocket server closed');
+            });
+
+            // Give clients time to receive the shutdown message
+            setTimeout(() => {
+                this.httpServer.close(() => {
+                    console.log('HTTP server closed');
+                    process.exit(0);
+                });
+
+                // Force exit after 5 seconds if graceful shutdown fails
+                setTimeout(() => {
+                    console.log('Forcing exit...');
+                    process.exit(1);
+                }, 5000);
+            }, 1000);
+        };
+
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        process.on('SIGINT', () => shutdown('SIGINT'));
+    }
+
     start() {
         this.httpServer.listen(PORT, () => {
             console.log(`🎮 FPS Multiplayer Server running on port ${PORT}`);
             console.log(`   Kill limit: ${CONFIG.KILL_LIMIT}`);
             console.log(`   Time limit: ${CONFIG.TIME_LIMIT / 60000} minutes`);
             console.log(`   Respawn delay: ${CONFIG.RESPAWN_DELAY / 1000} seconds`);
+            console.log(`   Max connections: ${MAX_CONNECTIONS}`);
         });
     }
 }

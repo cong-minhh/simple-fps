@@ -1,125 +1,6 @@
 // Shooting.js - Weapon system with multiple guns, ADS, and CS:GO-style recoil
 import * as THREE from 'three';
-
-// Weapon definitions with CS:GO-style recoil patterns
-const WEAPONS = {
-    PISTOL: {
-        name: 'Pistol',
-        fireRate: 5,
-        damage: 25,
-        headMultiplier: 2.5,
-        magazineSize: 12,
-        reloadTime: 1500,
-        recoilAmount: 0.025,
-        recoilRecovery: 8,
-        spread: 0.01,
-        adsSpread: 0.002,
-        adsZoom: 1.2,
-        adsOffsetY: -0.12, // Baseline (working)
-        automatic: false,
-        model: { bodySize: [0.08, 0.15, 0.3], barrelSize: [0.05, 0.05, 0.15], color: 0x2a2a2a },
-        // Pistol pattern - consistent upward kick
-        recoilPattern: [
-            [0.015, 0], [0.018, 0.002], [0.02, -0.003], [0.022, 0.001],
-            [0.025, -0.002], [0.025, 0.003], [0.028, 0], [0.028, -0.002],
-            [0.03, 0.002], [0.03, -0.001], [0.032, 0], [0.032, 0.002]
-        ]
-    },
-    RIFLE: {
-        name: 'Rifle',
-        fireRate: 10,
-        damage: 30,
-        headMultiplier: 3,
-        magazineSize: 30,
-        reloadTime: 2500,
-        recoilAmount: 0.04,
-        recoilRecovery: 6,
-        spread: 0.02,
-        adsSpread: 0.005,
-        adsZoom: 1.5,
-        adsOffsetY: -0.105, // Adjusted for height difference
-        automatic: true,
-        model: { bodySize: [0.06, 0.12, 0.5], barrelSize: [0.04, 0.04, 0.3], color: 0x1a1a1a },
-        // Rifle pattern - like AK-47: up, then left, then right
-        recoilPattern: [
-            [0.025, 0], [0.03, 0], [0.035, 0], [0.04, 0], [0.045, 0],           // First 5: straight up
-            [0.045, -0.015], [0.04, -0.02], [0.035, -0.025], [0.03, -0.02],     // Shots 6-9: pull left
-            [0.025, -0.01], [0.02, 0], [0.02, 0.01], [0.025, 0.02],             // Shots 10-13: center
-            [0.03, 0.025], [0.035, 0.03], [0.04, 0.025], [0.035, 0.02],         // Shots 14-17: pull right
-            [0.03, 0.01], [0.025, 0], [0.02, -0.01], [0.025, -0.015],           // Shots 18-21: back left
-            [0.03, -0.02], [0.03, -0.01], [0.025, 0.01], [0.03, 0.02],          // Shots 22-25: oscillate
-            [0.035, 0.01], [0.03, -0.01], [0.025, 0], [0.02, 0.01], [0.02, -0.01] // Shots 26-30
-        ]
-    },
-    SMG: {
-        name: 'SMG',
-        fireRate: 15,
-        damage: 18,
-        headMultiplier: 2,
-        magazineSize: 25,
-        reloadTime: 2000,
-        recoilAmount: 0.03,
-        recoilRecovery: 10,
-        spread: 0.03,
-        adsSpread: 0.015,
-        adsZoom: 1.3,
-        adsOffsetY: -0.095, // Adjusted for height difference
-        automatic: true,
-        model: { bodySize: [0.07, 0.1, 0.35], barrelSize: [0.035, 0.035, 0.12], color: 0x3a3a3a },
-        // SMG pattern - fast but more random, moderate climb
-        recoilPattern: [
-            [0.015, 0], [0.02, 0.005], [0.022, -0.005], [0.025, 0.008],
-            [0.025, -0.01], [0.028, 0.012], [0.028, -0.008], [0.03, 0.005],
-            [0.028, -0.012], [0.025, 0.01], [0.025, -0.005], [0.028, 0.008],
-            [0.03, -0.01], [0.028, 0.012], [0.025, -0.008], [0.025, 0.005],
-            [0.028, -0.01], [0.03, 0.01], [0.028, -0.005], [0.025, 0.008],
-            [0.025, -0.008], [0.028, 0.005], [0.03, -0.01], [0.028, 0.012], [0.025, 0]
-        ]
-    },
-    SHOTGUN: {
-        name: 'Shotgun',
-        fireRate: 1.5,
-        damage: 15, // Per pellet, 8 pellets
-        pellets: 8,
-        headMultiplier: 2,
-        magazineSize: 6,
-        reloadTime: 3000,
-        recoilAmount: 0.12,
-        recoilRecovery: 4,
-        spread: 0.08,
-        adsSpread: 0.05,
-        adsZoom: 1.1,
-        adsOffsetY: -0.105, // Adjusted for height difference
-        automatic: false,
-        model: { bodySize: [0.08, 0.12, 0.55], barrelSize: [0.06, 0.06, 0.25], color: 0x4a3020 },
-        // Shotgun pattern - heavy single kick
-        recoilPattern: [
-            [0.08, 0.01], [0.09, -0.02], [0.1, 0.015], [0.09, -0.01], [0.08, 0.01], [0.07, 0]
-        ]
-    },
-    SNIPER: {
-        name: 'Sniper',
-        fireRate: 0.8, // Bolt-action, slow rate
-        damage: 100,
-        headMultiplier: 4.0, // One-shot headshot potential
-        magazineSize: 5,
-        reloadTime: 3500,
-        recoilAmount: 0.15,
-        recoilRecovery: 3,
-        spread: 0.04, // Hip-fire is inaccurate
-        adsSpread: 0, // Perfect accuracy when scoped
-        adsZoom: 4.0, // High zoom for sniping
-        adsOffsetY: -0.11,
-        adsSpeed: 8, // Fast ADS like PUBG
-        automatic: false,
-        hasScope: true, // Enable scope overlay
-        model: { bodySize: [0.05, 0.1, 0.7], barrelSize: [0.03, 0.03, 0.5], color: 0x2a2a2a },
-        // Sniper pattern - heavy vertical kick, minimal horizontal
-        recoilPattern: [
-            [0.12, 0], [0.1, 0.01], [0.08, -0.01], [0.06, 0], [0.05, 0]
-        ]
-    }
-};
+import { WEAPONS } from './config/GameConfig.js';
 
 export class Shooting {
     constructor(camera, scene) {
@@ -206,6 +87,16 @@ export class Shooting {
         this.gunModel = null;
         this.defaultGunPos = new THREE.Vector3(0.25, -0.2, -0.4);
         this.adsGunPos = new THREE.Vector3(0, this.weapon.adsOffsetY || -0.12, -0.35);
+
+        // Weapon sway parameters
+        this.swayTime = 0;
+        this.breathTime = 0;
+        this.swayOffset = new THREE.Vector3();
+        this.swayRotation = new THREE.Euler();
+        this.lastPlayerVelocity = new THREE.Vector3();
+
+        // Camera effects reference (set from main.js)
+        this.cameraEffects = null;
 
         this.setupEventListeners();
         this.createGunModel();
@@ -652,10 +543,72 @@ export class Shooting {
             this.camera.rotation.x + this.recoilPitch * dt * 2));
         this.camera.rotation.y += this.recoilYaw * dt;
 
+        // === Weapon Sway (breathing and movement) ===
+        if (this.gunModel && !this.isReloading && !this.isSwitchingWeapon) {
+            this.updateWeaponSway(dt);
+        }
+
         // Auto-fire for automatic weapons
         if (this.isShooting && this.weapon.automatic) {
             this.tryShoot();
         }
+    }
+
+    /**
+     * Update weapon sway for natural movement feel
+     * @param {number} dt - Delta time
+     */
+    updateWeaponSway(dt) {
+        // Update time accumulators
+        this.breathTime += dt * 2;
+        this.swayTime += dt;
+
+        // Get player velocity if available
+        let speed = 0;
+        let isSprinting = false;
+        if (this.player) {
+            // Approximate velocity from position changes
+            const pos = this.player.getPosition();
+            if (this.lastPlayerVelocity.lengthSq() > 0) {
+                this.lastPlayerVelocity.subVectors(pos, this.lastPlayerVelocity);
+                speed = this.lastPlayerVelocity.length() / dt;
+            }
+            this.lastPlayerVelocity.copy(pos);
+            isSprinting = this.player.isSprinting;
+        }
+
+        // Breathing sway (always present but subtle)
+        const breathX = Math.sin(this.breathTime) * 0.003;
+        const breathY = Math.cos(this.breathTime * 0.7) * 0.002;
+
+        // Movement sway (weapon bob when walking/running)
+        const moveIntensity = Math.min(1, speed / 6); // Normalize to max speed
+        const bobFrequency = isSprinting ? 12 : 8;
+        const bobAmount = isSprinting ? 0.015 : 0.008;
+        const moveSwayX = Math.sin(this.swayTime * bobFrequency) * bobAmount * moveIntensity;
+        const moveSwayY = Math.abs(Math.sin(this.swayTime * bobFrequency * 2)) * bobAmount * 0.5 * moveIntensity;
+
+        // Sprint weapon lowering
+        const sprintLower = isSprinting ? 0.05 : 0;
+        const sprintTilt = isSprinting ? 0.1 : 0;
+
+        // Reduce sway when aiming (more stable)
+        const aimMultiplier = 1 - this.adsTransition * 0.8;
+
+        // Apply sway to gun position
+        this.swayOffset.x = (breathX + moveSwayX) * aimMultiplier;
+        this.swayOffset.y = (breathY + moveSwayY - sprintLower) * aimMultiplier;
+        this.swayOffset.z = 0;
+
+        // Apply sway rotation
+        this.swayRotation.x = sprintTilt * aimMultiplier;
+        this.swayRotation.z = moveSwayX * 2 * aimMultiplier;
+
+        // Add sway to gun model (additive to current position)
+        this.gunModel.position.x += this.swayOffset.x;
+        this.gunModel.position.y += this.swayOffset.y;
+        this.gunModel.rotation.x += this.swayRotation.x;
+        this.gunModel.rotation.z += this.swayRotation.z;
     }
 
     tryShoot() {

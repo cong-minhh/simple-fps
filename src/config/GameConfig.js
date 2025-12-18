@@ -280,3 +280,78 @@ export const WAVE_CONFIG = {
     MIN_SPAWN_INTERVAL: 1000,    // ms
     SPAWN_DELAY_BETWEEN: 500     // ms between individual spawns
 };
+
+/**
+ * Level of Detail (LOD) settings for performance optimization
+ */
+export const LOD = {
+    HIGH_DISTANCE: 15,      // Full detail within 15 units
+    MEDIUM_DISTANCE: 30,    // Reduced detail 15-30 units
+    LOW_DISTANCE: 50,       // Minimal detail beyond 30 units
+    UPDATE_INTERVAL: 100,   // ms between LOD updates
+    ENABLED: true           // Global LOD toggle
+};
+
+/**
+ * Spatial partitioning settings
+ */
+export const SPATIAL_HASH = {
+    CELL_SIZE: 4,           // Grid cell size in world units
+    BOUNDS: 20,             // Half-size of world bounds
+    ENEMY_CELL_SIZE: 4,     // Cell size for enemy spatial hash
+    COLLIDER_CELL_SIZE: 2   // Smaller cells for precise collision
+};
+
+/**
+ * Environmental hazard configurations
+ */
+export const HAZARDS = {
+    FIRE: {
+        damage: 5,
+        interval: 500,      // Damage tick interval in ms
+        color: 0xff4400,
+        particleCount: 20
+    },
+    TOXIC: {
+        damage: 3,
+        slowAmount: 0.5,    // Speed multiplier when in zone
+        interval: 300,
+        color: 0x44ff00
+    }
+};
+
+/**
+ * Weapon pickup settings
+ */
+export const PICKUPS = {
+    RESPAWN_TIME: 30000,    // ms until pickup respawns
+    FLOAT_HEIGHT: 0.5,      // Height above ground
+    ROTATION_SPEED: 2,      // Radians per second
+    COLLECT_RADIUS: 1.5     // Distance to collect
+};
+
+/**
+ * Arena layout configurations
+ */
+export const ARENA_LAYOUTS = {
+    WAREHOUSE: {
+        name: 'Warehouse',
+        floorColor: 0x2a2a3a,
+        size: 20,
+        wallHeight: 6
+    },
+    COURTYARD: {
+        name: 'Courtyard',
+        floorColor: 0x3a4a2a,
+        size: 25,
+        wallHeight: 4,
+        hasOutdoorLighting: true
+    },
+    BUNKER: {
+        name: 'Bunker',
+        floorColor: 0x3a3a3a,
+        size: 18,
+        wallHeight: 3,
+        lowCeiling: true
+    }
+};

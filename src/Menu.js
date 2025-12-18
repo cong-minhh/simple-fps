@@ -28,6 +28,7 @@ export class Menu {
             lobbyStatusText: document.getElementById('lobby-status-text'),
             lobbyPlayers: document.getElementById('lobby-players'),
             playerList: document.getElementById('player-list'),
+            mapSelect: document.getElementById('map-select'),
             // Multiplayer game over
             mpGameOver: document.getElementById('multiplayer-game-over'),
             mpResultTitle: document.getElementById('mp-result-title'),
@@ -58,6 +59,12 @@ export class Menu {
         const savedName = localStorage.getItem('fps_player_name');
         if (savedName && this.elements.playerNameInput) {
             this.elements.playerNameInput.value = savedName;
+        }
+
+        // Load saved map preference
+        const savedMap = localStorage.getItem('fps_map');
+        if (savedMap && this.elements.mapSelect) {
+            this.elements.mapSelect.value = savedMap;
         }
 
         // Apply initial toggle states
@@ -233,16 +240,26 @@ export class Menu {
     handleConnect() {
         const playerName = this.elements.playerNameInput?.value.trim() || 'Player';
         const serverUrl = this.elements.serverUrlInput?.value.trim() || 'ws://localhost:8080';
+        const selectedMap = this.elements.mapSelect?.value || 'WAREHOUSE';
 
-        // Save player name
+        // Save preferences
         localStorage.setItem('fps_player_name', playerName);
+        localStorage.setItem('fps_map', selectedMap);
 
         // Show connecting status
         this.showLobbyStatus('Connecting to server...');
 
         if (this.onMultiplayerConnect) {
-            this.onMultiplayerConnect(serverUrl, playerName);
+            this.onMultiplayerConnect(serverUrl, playerName, selectedMap);
         }
+    }
+
+    /**
+     * Get currently selected map
+     * @returns {string} Map name (WAREHOUSE, COURTYARD, BUNKER)
+     */
+    getSelectedMap() {
+        return this.elements.mapSelect?.value || 'WAREHOUSE';
     }
 
     showSettings() {

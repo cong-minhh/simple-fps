@@ -2,12 +2,13 @@
 // Uses object pooling to minimize GC and maximize performance
 // Hit detection remains instant (hitscan), tracers are purely visual
 import * as THREE from 'three';
+import { POOL_SIZES, TRACER } from './config/RenderConfig.js';
 
-// Pool configuration for optimal performance
-const POOL_SIZE = 100;           // Max concurrent tracers
-const TRACER_SPEED = 200;        // Very fast - bullets should be quick for competitive feel
-const TRACER_LENGTH = 1.2;       // Visual length of tracer
-const TRACER_FADE_SPEED = 80;    // How fast tracers fade after reaching target
+// Pool configuration from centralized config
+const POOL_SIZE = POOL_SIZES.BULLET_TRACERS;
+const TRACER_SPEED = TRACER.SPEED;
+const TRACER_LENGTH = TRACER.LENGTH;
+const TRACER_FADE_SPEED = TRACER.FADE_SPEED;
 
 /**
  * Manages all player bullet tracers with object pooling
@@ -129,20 +130,9 @@ export class BulletTracerManager {
         tracer.mesh.visible = true;
         tracer.mesh.material.opacity = 1;
 
-        // Set tracer color based on weapon
-        switch (weaponType) {
-            case 'SHOTGUN':
-                tracer.mesh.material.color.setHex(0xff6600); // Orange
-                break;
-            case 'SMG':
-                tracer.mesh.material.color.setHex(0x44ff44); // Green
-                break;
-            case 'PISTOL':
-                tracer.mesh.material.color.setHex(0x4488ff); // Blue
-                break;
-            default:
-                tracer.mesh.material.color.setHex(0xffdd44); // Yellow
-        }
+        // Set tracer color based on weapon (using centralized config)
+        const color = TRACER.COLORS[weaponType] || TRACER.COLORS.RIFLE;
+        tracer.mesh.material.color.setHex(color);
 
         this.active.push(tracer);
         return true;

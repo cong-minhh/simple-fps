@@ -122,6 +122,11 @@ export class MultiplayerManager {
                     const target = new THREE.Vector3(data.target.x, data.target.y, data.target.z);
                     this.bulletTracerManager.fire(origin, target, data.weapon || 'RIFLE');
                 }
+
+                // Callback for spatial audio
+                if (this.onRemoteShoot) {
+                    this.onRemoteShoot(player.getPosition(), data.weapon || 'RIFLE');
+                }
             }
         });
 
@@ -130,7 +135,13 @@ export class MultiplayerManager {
             if (data.targetId === this.localPlayerId) {
                 // Local player took damage - only if alive
                 if (this.localPlayer && !this.localPlayer.isDead && !this.isRespawning) {
-                    this.localPlayer.takeDamage(data.damage);
+                    // Get attacker position for damage direction indicator
+                    let attackerPos = null;
+                    const attacker = this.remotePlayers.get(data.attackerId);
+                    if (attacker) {
+                        attackerPos = attacker.getPosition();
+                    }
+                    this.localPlayer.takeDamage(data.damage, attackerPos);
                 }
             } else {
                 // Remote player took damage
@@ -174,7 +185,20 @@ export class MultiplayerManager {
                 }
                 this.isRespawning = true;
                 this.respawnCountdown = 3;
-                if (this.onRespawnStart) this.onRespawnStart(this.respawnCountdown);
+
+                // Get killer data for death camera
+                let killerData = null;
+                const killer = this.remotePlayers.get(data.killerId);
+                if (killer) {
+                    killerData = {
+                        id: data.killerId,
+                        name: data.killerName,
+                        position: killer.getPosition(),
+                        weapon: data.weapon || 'RIFLE'
+                    };
+                }
+
+                if (this.onRespawnStart) this.onRespawnStart(this.respawnCountdown, killerData);
             }
         });
 

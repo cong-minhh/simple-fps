@@ -1,4 +1,6 @@
 // HUD.js - Heads-up display with screen-edge enemy indicators
+import { Logger } from './utils/Logger.js';
+
 export class HUD {
     constructor() {
         this.elements = {
@@ -41,12 +43,299 @@ export class HUD {
 
         this.hitmarkerEnabled = true;
 
+        // Dynamic crosshair state
+        this.crosshairSpread = 0;
+        this.targetCrosshairSpread = 0;
+        this.crosshairRecoverySpeed = 8;
+        this.isMoving = false;
+        this.isShooting = false;
+        this.isAiming = false;
+
+        // Create dynamic crosshair
+        this.createDynamicCrosshair();
+
         // Multiplayer state
         this.isMultiplayer = false;
         this.localPlayerId = null;
 
         // Setup scoreboard toggle
         this.setupScoreboardListeners();
+
+        // Dirty tracking for performance
+        this._lastScoreboardHash = '';
+
+        // Damage direction indicators pool
+        this.damageIndicators = [];
+        this.maxDamageIndicators = 8;
+        this._createDamageIndicatorPool();
+    }
+
+    /**
+     * Create damage direction indicator pool
+     */
+    _createDamageIndicatorPool() {
+        // Add styles for damage indicators
+        if (!document.getElementById('damage-indicator-styles')) {
+            const style = document.createElement('style');
+            style.id = 'damage-indicator-styles';
+            style.textContent = `
+                .damage-indicator {
+                    position: fixed;
+                    width: 60px;
+                    height: 60px;
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 0.1s ease-out;
+                    z-index: 950;
+                }
+                .damage-indicator.active {
+                    opacity: 1;
+                    animation: damageIndicatorPulse 0.3s ease-out;
+                }
+                .damage-indicator::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0;
+                    height: 0;
+                    border-left: 15px solid transparent;
+                    border-right: 15px solid transparent;
+                    border-bottom: 40px solid rgba(255, 50, 50, 0.8);
+                    filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6));
+                }
+                .damage-indicator.critical::before {
+                    border-bottom-color: rgba(255, 0, 0, 1);
+                    filter: drop-shadow(0 0 12px rgba(255, 0, 0, 0.9));
+                }
+                @keyframes damageIndicatorPulse {
+                    0% { transform: scale(1.2); opacity: 1; }
+                    100% { transform: scale(1); opacity: 0.8; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Create container
+        let container = document.getElementById('damage-indicators');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'damage-indicators';
+            container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 950;';
+            document.body.appendChild(container);
+        }
+
+        // Create indicator pool
+        for (let i = 0; i < this.maxDamageIndicators; i++) {
+            const indicator = document.createElement('div');
+            indicator.className = 'damage-indicator';
+            container.appendChild(indicator);
+            this.damageIndicators.push({
+                element: indicator,
+                active: false,
+                timeout: null,
+                angle: 0
+            });
+        }
+    }
+
+    /**
+     * Show damage direction indicator
+     * @param {number} damageAngle - Direction of damage in radians (relative to player facing)
+     * @param {number} intensity - Damage intensity 0-1 (affects visual intensity)
+     */
+    showDamageDirection(damageAngle, intensity = 0.5) {
+        // Find inactive indicator
+        let indicator = this.damageIndicators.find(i => !i.active);
+        if (!indicator) {
+            // Reuse oldest active indicator
+            indicator = this.damageIndicators[0];
+            if (indicator.timeout) clearTimeout(indicator.timeout);
+        }
+
+        indicator.active = true;
+        indicator.angle = damageAngle;
+
+        const el = indicator.element;
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+
+        // Position on screen edge based on angle
+        const radius = Math.min(centerX, centerY) * 0.7;
+        const x = centerX + Math.sin(damageAngle) * radius;
+        const y = centerY - Math.cos(damageAngle) * radius;
+
+        // Rotate to point toward center (damage source direction)
+        const rotationDeg = (damageAngle * 180 / Math.PI) + 180;
+
+        el.style.left = `${x - 30}px`;
+        el.style.top = `${y - 30}px`;
+        el.style.transform = `rotate(${rotationDeg}deg)`;
+        el.classList.add('active');
+        el.classList.toggle('critical', intensity > 0.7);
+
+        // Fade out
+        const fadeTime = 1500 + intensity * 500;
+        indicator.timeout = setTimeout(() => {
+            el.classList.remove('active', 'critical');
+            indicator.active = false;
+        }, fadeTime);
+    }
+
+    /**
+     * Calculate and show damage indicator from attacker position
+     * @param {THREE.Vector3} playerPos - Player position
+     * @param {number} playerYaw - Player yaw angle
+     * @param {THREE.Vector3} attackerPos - Attacker position
+     * @param {number} damage - Damage amount for intensity
+     * @param {number} maxDamage - Max damage for intensity calculation
+     */
+    showDamageFrom(playerPos, playerYaw, attackerPos, damage = 20, maxDamage = 100) {
+        // Calculate angle from player to attacker
+        const dx = attackerPos.x - playerPos.x;
+        const dz = attackerPos.z - playerPos.z;
+        const worldAngle = Math.atan2(dx, -dz);
+        const relativeAngle = worldAngle + playerYaw;
+
+        const intensity = Math.min(damage / maxDamage, 1);
+        this.showDamageDirection(relativeAngle, intensity);
+    }
+
+    /**
+     * Clear all damage indicators
+     */
+    clearDamageIndicators() {
+        for (const indicator of this.damageIndicators) {
+            if (indicator.timeout) clearTimeout(indicator.timeout);
+            indicator.element.classList.remove('active', 'critical');
+            indicator.active = false;
+        }
+    }
+
+    /**
+     * Create dynamic crosshair with 4 lines that expand/contract
+     */
+    createDynamicCrosshair() {
+        // Replace simple dot with dynamic crosshair
+        const crosshair = this.elements.crosshair;
+        if (!crosshair) return;
+
+        // Store original for reference
+        crosshair.classList.add('dynamic-crosshair');
+        crosshair.innerHTML = `
+            <div class="crosshair-line crosshair-top"></div>
+            <div class="crosshair-line crosshair-bottom"></div>
+            <div class="crosshair-line crosshair-left"></div>
+            <div class="crosshair-line crosshair-right"></div>
+            <div class="crosshair-dot"></div>
+        `;
+
+        // Add dynamic crosshair styles if not present
+        if (!document.getElementById('dynamic-crosshair-styles')) {
+            const style = document.createElement('style');
+            style.id = 'dynamic-crosshair-styles';
+            style.textContent = `
+                .dynamic-crosshair {
+                    width: 40px !important;
+                    height: 40px !important;
+                    background: none !important;
+                    border-radius: 0 !important;
+                    box-shadow: none !important;
+                }
+                .crosshair-line {
+                    position: absolute;
+                    background: rgba(255, 255, 255, 0.9);
+                    transition: transform 0.05s ease-out;
+                }
+                .crosshair-top, .crosshair-bottom {
+                    width: 2px;
+                    height: 8px;
+                    left: 50%;
+                    margin-left: -1px;
+                }
+                .crosshair-top { top: 0; }
+                .crosshair-bottom { bottom: 0; }
+                .crosshair-left, .crosshair-right {
+                    width: 8px;
+                    height: 2px;
+                    top: 50%;
+                    margin-top: -1px;
+                }
+                .crosshair-left { left: 0; }
+                .crosshair-right { right: 0; }
+                .crosshair-dot {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    width: 2px;
+                    height: 2px;
+                    background: white;
+                    transform: translate(-50%, -50%);
+                    border-radius: 50%;
+                }
+                .dynamic-crosshair.hit .crosshair-line {
+                    background: #ff3333;
+                }
+                .dynamic-crosshair.hit .crosshair-dot {
+                    background: #ff3333;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    /**
+     * Update dynamic crosshair spread based on player state
+     * @param {boolean} isMoving - Player is moving
+     * @param {boolean} isShooting - Player just shot
+     * @param {boolean} isAiming - Player is aiming down sights
+     * @param {number} dt - Delta time for smooth interpolation
+     */
+    updateCrosshair(isMoving, isShooting, isAiming, dt = 0.016) {
+        // Calculate target spread based on state
+        let targetSpread = 0;
+
+        if (isShooting) {
+            targetSpread = 12; // Max spread on shooting
+        } else if (isMoving && !isAiming) {
+            targetSpread = 6; // Medium spread when moving
+        } else if (isAiming) {
+            targetSpread = 0; // Tight when aiming
+        } else {
+            targetSpread = 2; // Slight spread at rest
+        }
+
+        // Smooth interpolation
+        this.crosshairSpread += (targetSpread - this.crosshairSpread) * this.crosshairRecoverySpeed * dt;
+
+        // Apply spread to crosshair lines
+        const crosshair = this.elements.crosshair;
+        if (!crosshair) return;
+
+        const spread = this.crosshairSpread;
+        const top = crosshair.querySelector('.crosshair-top');
+        const bottom = crosshair.querySelector('.crosshair-bottom');
+        const left = crosshair.querySelector('.crosshair-left');
+        const right = crosshair.querySelector('.crosshair-right');
+
+        if (top) top.style.transform = `translateY(-${spread}px)`;
+        if (bottom) bottom.style.transform = `translateY(${spread}px)`;
+        if (left) left.style.transform = `translateX(-${spread}px)`;
+        if (right) right.style.transform = `translateX(${spread}px)`;
+    }
+
+    /**
+     * Flash crosshair on hit for feedback
+     */
+    flashCrosshairHit() {
+        const crosshair = this.elements.crosshair;
+        if (!crosshair) return;
+
+        crosshair.classList.add('hit');
+        setTimeout(() => {
+            crosshair.classList.remove('hit');
+        }, 100);
     }
 
     setupScoreboardListeners() {
@@ -344,6 +633,11 @@ export class HUD {
     updateScoreboard(scores, localPlayerId) {
         if (!this.elements.scoreboardRows) return;
 
+        // Create a hash of scores to detect changes (avoid unnecessary DOM updates)
+        const hash = scores.map(p => `${p.id}:${p.kills}:${p.deaths}`).join('|');
+        if (hash === this._lastScoreboardHash) return;
+        this._lastScoreboardHash = hash;
+
         this.elements.scoreboardRows.innerHTML = '';
 
         scores.forEach(player => {
@@ -415,7 +709,7 @@ export class HUD {
     }
 
     showRespawnOverlay(countdown, killerName = 'Enemy') {
-        console.log('HUD.showRespawnOverlay called with countdown:', countdown);
+        Logger.debug('HUD.showRespawnOverlay called with countdown:', countdown);
         if (this.elements.respawnOverlay) {
             this.elements.respawnOverlay.classList.remove('hidden');
             this.elements.respawnOverlay.style.display = 'flex'; // Reset display
@@ -429,12 +723,12 @@ export class HUD {
     }
 
     hideRespawnOverlay() {
-        console.log('HUD.hideRespawnOverlay called');
+        Logger.debug('HUD.hideRespawnOverlay called');
         if (this.elements.respawnOverlay) {
             this.elements.respawnOverlay.classList.add('hidden');
             // Also set display directly as backup
             this.elements.respawnOverlay.style.display = 'none';
-            console.log('Respawn overlay hidden');
+            Logger.debug('Respawn overlay hidden');
         }
     }
 
@@ -453,6 +747,7 @@ export class HUD {
         this.updateScore(0);
         this.clearEnemyIndicators();
         this.clearKillFeed();
+        this.clearDamageIndicators();
         this.hideRespawnOverlay();
         this.hideScoreboard();
     }

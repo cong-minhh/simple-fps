@@ -11,6 +11,18 @@ import { Audio } from './Audio.js';
 import { NetworkManager } from './NetworkManager.js';
 import { MultiplayerManager } from './MultiplayerManager.js';
 import { BulletTracerManager } from './BulletTracer.js';
+import { Logger, PerformanceMonitor } from './utils/index.js';
+import { CameraEffects, SHAKE_PRESETS } from './CameraEffects.js';
+import { PostProcessing } from './PostProcessing.js';
+import { KillStreakManager } from './KillStreakManager.js';
+import { ParticleSystem } from './ParticleSystem.js';
+import { DeathCamera } from './DeathCamera.js';
+import { WeaponPickupManager } from './WeaponPickup.js';
+// New systems
+import { SpatialAudio } from './SpatialAudio.js';
+import { DeathAnimationManager } from './DeathAnimation.js';
+import { DynamicMapManager } from './DynamicMapElements.js';
+import { SpectatorMode } from './SpectatorMode.js';
 
 // Game states
 const STATES = {
@@ -59,6 +71,31 @@ class Game {
         // Initialize bullet tracer system for visual feedback
         this.bulletTracerManager = new BulletTracerManager(this.scene, this.camera);
         this.shooting.setBulletTracerManager(this.bulletTracerManager);
+
+        // Initialize enhanced systems
+        this.cameraEffects = new CameraEffects(this.camera);
+        this.postProcessing = new PostProcessing(this.renderer, this.scene, this.camera);
+        this.killStreakManager = new KillStreakManager();
+        this.particleSystem = new ParticleSystem(this.scene);
+        this.deathCamera = new DeathCamera(this.camera, this.scene);
+
+        // Weapon pickup system
+        this.weaponPickupManager = new WeaponPickupManager(this.scene);
+        this.weaponPickupManager.onWeaponCollected = (weaponType) => {
+            this.shooting.switchWeapon(weaponType);
+            this.audio.playPickup?.(); // Play pickup sound if available
+            Logger.debug('Picked up weapon:', weaponType);
+        };
+
+        // New enhanced systems
+        this.spatialAudio = new SpatialAudio();
+        this.deathAnimations = new DeathAnimationManager(this.scene);
+        this.dynamicMap = new DynamicMapManager(this.scene);
+        this.spectatorMode = new SpectatorMode(this.camera, this.scene);
+
+
+        // Connect camera effects to shooting
+        this.shooting.cameraEffects = this.cameraEffects;
 
         // Connect projectile manager to player for hit detection
         if (this.waveManager.projectileManager) {
@@ -152,29 +189,56 @@ class Game {
     }
 
     initLighting() {
-        const ambient = new THREE.AmbientLight(0x606080, 0.6);
+        // Ambient light - slightly blue for atmospheric feel
+        const ambient = new THREE.AmbientLight(0x606080, 0.5);
         this.scene.add(ambient);
 
-        const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-        directional.position.set(10, 20, 10);
+        // Main directional light with enhanced shadows
+        const directional = new THREE.DirectionalLight(0xffeedd, 0.9);
+        directional.position.set(15, 25, 10);
         directional.castShadow = true;
-        directional.shadow.mapSize.width = 512;
-        directional.shadow.mapSize.height = 512;
-        directional.shadow.camera.near = 1;
-        directional.shadow.camera.far = 40;
-        directional.shadow.camera.left = -12;
-        directional.shadow.camera.right = 12;
-        directional.shadow.camera.top = 12;
-        directional.shadow.camera.bottom = -12;
-        this.scene.add(directional);
 
-        const redLight = new THREE.PointLight(0xff4444, 0.4, 25);
-        redLight.position.set(-8, 5, -8);
+        // Higher quality shadow map
+        directional.shadow.mapSize.width = 1024;
+        directional.shadow.mapSize.height = 1024;
+        directional.shadow.camera.near = 1;
+        directional.shadow.camera.far = 60;
+        directional.shadow.camera.left = -20;
+        directional.shadow.camera.right = 20;
+        directional.shadow.camera.top = 20;
+        directional.shadow.camera.bottom = -20;
+        directional.shadow.bias = -0.0005;
+        directional.shadow.normalBias = 0.02;
+        this.scene.add(directional);
+        this.mainLight = directional;
+
+        // Accent lights for atmosphere
+        const redLight = new THREE.PointLight(0xff4444, 0.5, 25);
+        redLight.position.set(-8, 4, -8);
+        redLight.castShadow = true;
+        redLight.shadow.mapSize.width = 256;
+        redLight.shadow.mapSize.height = 256;
         this.scene.add(redLight);
 
-        const blueLight = new THREE.PointLight(0x4444ff, 0.4, 25);
-        blueLight.position.set(8, 5, 8);
+        const blueLight = new THREE.PointLight(0x4444ff, 0.5, 25);
+        blueLight.position.set(8, 4, 8);
+        blueLight.castShadow = true;
+        blueLight.shadow.mapSize.width = 256;
+        blueLight.shadow.mapSize.height = 256;
         this.scene.add(blueLight);
+
+        // Fill light from below for dramatic effect
+        const fillLight = new THREE.HemisphereLight(0x444488, 0x222211, 0.3);
+        this.scene.add(fillLight);
+
+        // Rim light for player visibility
+        const rimLight = new THREE.SpotLight(0xffffff, 0.3);
+        rimLight.position.set(0, 15, 0);
+        rimLight.angle = Math.PI / 4;
+        rimLight.penumbra = 0.5;
+        rimLight.decay = 2;
+        rimLight.distance = 50;
+        this.scene.add(rimLight);
     }
 
     createDamageFlash() {
@@ -194,6 +258,11 @@ class Game {
         this.waveManager.onEnemyKilled = () => {
             this.score.addKill();
             this.audio.playEnemyDeath();
+            // Register kill for streak tracking
+            const streakResult = this.killStreakManager.registerKill();
+            if (streakResult) {
+                Logger.debug('Kill streak:', streakResult.name);
+            }
         };
 
         this.waveManager.onWaveChange = (wave) => {
@@ -202,13 +271,31 @@ class Game {
 
         this.shooting.onShoot = () => {
             this.audio.playGunshot();
+            // Add screen shake based on weapon
+            const weaponKey = this.shooting.currentWeaponKey;
+            if (weaponKey === 'SHOTGUN') {
+                this.cameraEffects.applyPreset(SHAKE_PRESETS.SHOTGUN_FIRE);
+            } else if (weaponKey === 'SNIPER') {
+                this.cameraEffects.applyPreset(SHAKE_PRESETS.SNIPER_FIRE);
+            } else {
+                this.cameraEffects.applyPreset(SHAKE_PRESETS.WEAPON_FIRE);
+            }
         };
 
         this.shooting.onHit = (enemy, damage, hitPoint, isHeadshot) => {
             const killed = enemy.takeDamage(damage);
             this.hud.showHitmarker(isHeadshot);
+            // Play hit confirmation sound
             if (killed) {
+                this.audio.playHitConfirmation('kill');
                 this.waveManager.onEnemyDeath(enemy);
+
+                // Trigger death animation
+                const enemyPos = enemy.getPosition();
+                const deathDir = enemyPos.clone().sub(this.player.getPosition()).normalize();
+                this.deathAnimations.triggerDeath(enemy.mesh, enemyPos, deathDir, 'enemy');
+            } else {
+                this.audio.playHitConfirmation(isHeadshot ? 'headshot' : 'body');
             }
         };
 
@@ -253,12 +340,30 @@ class Game {
             }
         };
 
-        // Player damage audio & visual
+        // Player damage audio & visual with damage direction
         const origTakeDamage = this.player.takeDamage.bind(this.player);
-        this.player.takeDamage = (amount) => {
+        this.player.takeDamage = (amount, attackerPos = null) => {
             origTakeDamage(amount);
             this.audio.playPlayerHurt();
             this.hud.showDamageFlash();
+            // Add screen shake and post-processing damage effect
+            const damageRatio = amount / this.player.maxHealth;
+            if (damageRatio > 0.3) {
+                this.cameraEffects.applyPreset(SHAKE_PRESETS.DAMAGE_HEAVY);
+            } else {
+                this.cameraEffects.applyPreset(SHAKE_PRESETS.DAMAGE_LIGHT);
+            }
+            this.postProcessing.triggerDamageEffect(damageRatio);
+
+            // Show damage direction indicator if attacker position known
+            if (attackerPos) {
+                this.hud.showDamageFrom(
+                    this.player.getPosition(),
+                    this.camera.rotation.y,
+                    attackerPos,
+                    amount
+                );
+            }
         };
 
         // Pointer lock
@@ -293,7 +398,7 @@ class Game {
                 // Manually add existing players (since 'joined' event was already emitted before MultiplayerManager existed)
                 result.players.forEach(playerData => {
                     if (playerData.id !== result.playerId) {
-                        console.log('Adding existing player:', playerData.name);
+                        Logger.debug('Adding existing player:', playerData.name);
                         this.multiplayerManager.addRemotePlayer(playerData);
                     }
                 });
@@ -311,7 +416,7 @@ class Game {
                     this.startMultiplayerGame();
                 }
             } catch (error) {
-                console.error('Connection failed:', error);
+                Logger.error('Connection failed:', error);
                 this.menu.showConnectionError('Failed to connect. Is the server running?');
                 this.state = STATES.MENU;
             }
@@ -351,13 +456,13 @@ class Game {
 
         // Game start
         this.multiplayerManager.onGameStart = (config) => {
-            console.log('Multiplayer game starting!', config);
+            Logger.info('Multiplayer game starting!', config);
             this.startMultiplayerGame();
         };
 
         // Game end
         this.multiplayerManager.onGameEnd = (data) => {
-            console.log('Multiplayer game ended!', data);
+            Logger.info('Multiplayer game ended!', data);
             this.state = STATES.MULTIPLAYER_GAME_OVER;
             this.player.unlock();
             this.hud.hide();
@@ -380,16 +485,31 @@ class Game {
                     latest.isLocalKiller,
                     latest.isLocalVictim
                 );
+                // Play kill confirmation sound when local player gets a kill
+                if (latest.isLocalKiller) {
+                    this.audio.playHitConfirmation('kill');
+                }
             }
         };
 
         // Respawn
-        this.multiplayerManager.onRespawnStart = (countdown) => {
-            this.hud.showRespawnOverlay(countdown);
+        this.multiplayerManager.onRespawnStart = (countdown, killerData) => {
+            this.hud.showRespawnOverlay(countdown, killerData?.name);
+            // Start death camera if we have killer data
+            if (killerData && killerData.position) {
+                this.deathCamera.start(this.player.getPosition(), killerData);
+            }
+            // Start spectator mode with remote players
+            const remotePlayers = Array.from(this.multiplayerManager.remotePlayers.values());
+            if (remotePlayers.length > 0) {
+                this.spectatorMode.start(remotePlayers);
+            }
         };
 
         this.multiplayerManager.onRespawnEnd = () => {
             this.hud.hideRespawnOverlay();
+            this.deathCamera.stop();
+            this.spectatorMode.stop();
         };
 
         // Player count
@@ -407,6 +527,11 @@ class Game {
                 });
                 this.menu.updatePlayerList(players, this.network.getPlayerId());
             }
+        };
+
+        // Spatial audio for remote gunshots
+        this.multiplayerManager.onRemoteShoot = (position, weaponType) => {
+            this.spatialAudio.playRemoteGunshot(position, weaponType);
         };
     }
 
@@ -487,6 +612,20 @@ class Game {
         this.hud.reset();
         this.shooting.reset();
 
+        // Spawn weapon pickups
+        this.weaponPickupManager.clear();
+        this.weaponPickupManager.spawnDefaultPickups();
+
+        // Initialize spatial audio
+        this.spatialAudio.init();
+
+        // Create dynamic map elements
+        this.dynamicMap.clear();
+        this.dynamicMap.createDefaults();
+
+        // Clear any death animations
+        this.deathAnimations.clear();
+
         // Ensure HUD is in solo mode
         this.hud.setMultiplayerMode(false);
 
@@ -523,6 +662,8 @@ class Game {
                 // Send hit to server
                 this.multiplayerManager.handleLocalHit(target.playerId, damage, isHeadshot);
                 this.hud.showHitmarker(isHeadshot);
+                // Play hit confirmation sound (kill sound is played when kill is confirmed by server)
+                this.audio.playHitConfirmation(isHeadshot ? 'headshot' : 'body');
             }
         };
 
@@ -578,9 +719,21 @@ class Game {
         this.lastTime = time;
 
         if (dt <= 0 || dt > 0.2) {
-            this.renderer.render(this.scene, this.camera);
+            this.postProcessing.render();
             return;
         }
+
+        // Update performance monitor
+        PerformanceMonitor.update(dt, this.renderer);
+
+        // Update camera effects
+        this.cameraEffects.update(dt);
+
+        // Update post-processing effects
+        this.postProcessing.update(dt);
+
+        // Update particle system
+        this.particleSystem.update(dt);
 
         // Update based on game state
         if (this.state === STATES.PLAYING) {
@@ -589,7 +742,8 @@ class Game {
             this.updateMultiplayerGame(dt, time);
         }
 
-        this.renderer.render(this.scene, this.camera);
+        // Render with post-processing
+        this.postProcessing.render();
     }
 
     updateSoloGame(dt, time) {
@@ -604,6 +758,12 @@ class Game {
             if (arenaResult.hazardDamage > 0) {
                 this.player.takeDamage(arenaResult.hazardDamage);
             }
+
+            // Update LOD system
+            this.arena.updateLOD(this.camera.position, this.camera);
+
+            // Update weapon pickups
+            this.weaponPickupManager.update(dt, this.player.getPosition());
 
             this.waveManager.update(dt);
 
@@ -621,10 +781,21 @@ class Game {
                 this.score.updateSurvival(elapsed);
                 this.hud.updateScore(this.score.getScore());
             }
+
+            // Update new systems
+            const playerPos = this.player.getPosition();
+            this.dynamicMap.update(dt, playerPos);
+            this.deathAnimations.update(dt);
+            this.spatialAudio.updateListener(this.camera);
         }
     }
 
     updateMultiplayerGame(dt, time) {
+        // Update death camera first (takes over camera control when active)
+        if (this.deathCamera.isPlaying()) {
+            this.deathCamera.update(dt);
+        }
+
         // Update player
         this.player.update(dt);
         this.shooting.update(dt);
@@ -632,6 +803,9 @@ class Game {
 
         // Update arena (no hazard damage in MP to keep it simple)
         this.arena.update(dt, this.player.getPosition());
+
+        // Update LOD system
+        this.arena.updateLOD(this.camera.position, this.camera);
 
         // Update multiplayer manager (remote players, network sync)
         if (this.multiplayerManager) {
@@ -660,6 +834,8 @@ class Game {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        // Update post-processing resolution
+        this.postProcessing.resize(window.innerWidth, window.innerHeight);
     }
 
     // Convert slider value (1-10) to actual mouse sensitivity
