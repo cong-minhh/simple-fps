@@ -273,9 +273,12 @@ export class PostProcessing {
 
     /**
      * Render scene with post-processing
+     * Bypasses the extra pass when no active effects to save GPU time
      */
     render() {
-        if (!this.enabled) {
+        // Fast path: skip post-processing entirely when no active effects
+        if (!this.enabled || this.damageChromatic < 0.001) {
+            this.renderer.setRenderTarget(null);
             this.renderer.render(this.scene, this.camera);
             return;
         }

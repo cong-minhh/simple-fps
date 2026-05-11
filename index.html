@@ -258,6 +258,21 @@
     <h1>⚙ SETTINGS</h1>
     <div class="settings-content">
       <div class="setting-row">
+        <label for="quality-preset">Graphics Quality</label>
+        <div class="quality-buttons" id="quality-preset">
+          <button class="quality-btn" data-quality="low">LOW</button>
+          <button class="quality-btn active" data-quality="medium">MED</button>
+          <button class="quality-btn" data-quality="high">HIGH</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label for="shadows-toggle">Shadows</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="shadows-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
         <label for="particles-toggle">Particles</label>
         <label class="toggle-switch">
           <input type="checkbox" id="particles-toggle" checked>
@@ -265,9 +280,9 @@
         </label>
       </div>
       <div class="setting-row">
-        <label for="flicker-toggle">Flickering Lights</label>
+        <label for="postfx-toggle">Post-Processing</label>
         <label class="toggle-switch">
-          <input type="checkbox" id="flicker-toggle" checked>
+          <input type="checkbox" id="postfx-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>

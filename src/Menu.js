@@ -11,8 +11,10 @@ export class Menu {
             settingsBtn: document.getElementById('settings-btn'),
             settingsBackBtn: document.getElementById('settings-back-btn'),
             particlesToggle: document.getElementById('particles-toggle'),
-            flickerToggle: document.getElementById('flicker-toggle'),
+            shadowsToggle: document.getElementById('shadows-toggle'),
+            postfxToggle: document.getElementById('postfx-toggle'),
             hitmarkerToggle: document.getElementById('hitmarker-toggle'),
+            qualityPreset: document.getElementById('quality-preset'),
             highScore: document.getElementById('high-score'),
             finalScore: document.getElementById('final-score'),
             finalTime: document.getElementById('final-time'),
@@ -50,9 +52,12 @@ export class Menu {
         // Settings state (load from localStorage)
         this.settings = {
             particles: localStorage.getItem('fps_particles') !== 'false',
-            flickerLights: localStorage.getItem('fps_flicker') !== 'false',
+            shadows: localStorage.getItem('fps_shadows') !== 'false',
+            postfx: localStorage.getItem('fps_postfx') !== 'false',
             hitmarkers: localStorage.getItem('fps_hitmarkers') !== 'false',
-            sensitivity: parseFloat(localStorage.getItem('fps_sensitivity')) || 5
+            sensitivity: parseFloat(localStorage.getItem('fps_sensitivity')) || 5,
+            quality: localStorage.getItem('fps_quality') || 'medium',
+            resolutionScale: parseFloat(localStorage.getItem('fps_res_scale')) || 1.0
         };
 
         // Load saved player name
@@ -71,8 +76,11 @@ export class Menu {
         if (this.elements.particlesToggle) {
             this.elements.particlesToggle.checked = this.settings.particles;
         }
-        if (this.elements.flickerToggle) {
-            this.elements.flickerToggle.checked = this.settings.flickerLights;
+        if (this.elements.shadowsToggle) {
+            this.elements.shadowsToggle.checked = this.settings.shadows;
+        }
+        if (this.elements.postfxToggle) {
+            this.elements.postfxToggle.checked = this.settings.postfx;
         }
         if (this.elements.hitmarkerToggle) {
             this.elements.hitmarkerToggle.checked = this.settings.hitmarkers;
@@ -83,6 +91,8 @@ export class Menu {
         if (this.elements.sensitivityValue) {
             this.elements.sensitivityValue.textContent = this.settings.sensitivity;
         }
+        // Set active quality button
+        this._updateQualityButtons(this.settings.quality);
 
         // Callbacks
         this.onStart = null;
@@ -139,13 +149,30 @@ export class Menu {
             }
         });
 
-        // Flicker lights toggle
-        this.elements.flickerToggle?.addEventListener('change', (e) => {
-            this.settings.flickerLights = e.target.checked;
-            localStorage.setItem('fps_flicker', this.settings.flickerLights);
+        // Shadows toggle
+        this.elements.shadowsToggle?.addEventListener('change', (e) => {
+            this.settings.shadows = e.target.checked;
+            localStorage.setItem('fps_shadows', this.settings.shadows);
             if (this.onSettingsChange) {
-                this.onSettingsChange('flickerLights', this.settings.flickerLights);
+                this.onSettingsChange('shadows', this.settings.shadows);
             }
+        });
+
+        // Post-processing toggle
+        this.elements.postfxToggle?.addEventListener('change', (e) => {
+            this.settings.postfx = e.target.checked;
+            localStorage.setItem('fps_postfx', this.settings.postfx);
+            if (this.onSettingsChange) {
+                this.onSettingsChange('postfx', this.settings.postfx);
+            }
+        });
+
+        // Quality preset buttons
+        this.elements.qualityPreset?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.quality-btn');
+            if (!btn) return;
+            const quality = btn.dataset.quality;
+            this._applyQualityPreset(quality);
         });
 
         // Hitmarker toggle
@@ -497,5 +524,58 @@ export class Menu {
         this.elements.pauseMenu?.classList.add('hidden');
         this.isPaused = false;
         this.pauseSettingsOpen = false;
+    }
+
+    // === Quality Preset System ===
+
+    _applyQualityPreset(quality) {
+        const presets = {
+            low: { resolutionScale: 0.5, shadows: false, particles: false, postfx: false },
+            medium: { resolutionScale: 0.75, shadows: true, particles: true, postfx: true },
+            high: { resolutionScale: 1.0, shadows: true, particles: true, postfx: true }
+        };
+
+        const preset = presets[quality];
+        if (!preset) return;
+
+        this.settings.quality = quality;
+        this.settings.resolutionScale = preset.resolutionScale;
+        this.settings.shadows = preset.shadows;
+        this.settings.particles = preset.particles;
+        this.settings.postfx = preset.postfx;
+
+        // Persist
+        localStorage.setItem('fps_quality', quality);
+        localStorage.setItem('fps_res_scale', preset.resolutionScale);
+        localStorage.setItem('fps_shadows', preset.shadows);
+        localStorage.setItem('fps_particles', preset.particles);
+        localStorage.setItem('fps_postfx', preset.postfx);
+
+        // Sync toggles UI
+        this._setToggle(this.elements.shadowsToggle, preset.shadows);
+        this._setToggle(this.elements.particlesToggle, preset.particles);
+        this._setToggle(this.elements.postfxToggle, preset.postfx);
+        this._updateQualityButtons(quality);
+
+        // Notify game
+        if (this.onSettingsChange) {
+            this.onSettingsChange('quality', quality);
+            this.onSettingsChange('resolutionScale', preset.resolutionScale);
+            this.onSettingsChange('shadows', preset.shadows);
+            this.onSettingsChange('particles', preset.particles);
+            this.onSettingsChange('postfx', preset.postfx);
+        }
+    }
+
+    _updateQualityButtons(activeQuality) {
+        const buttons = this.elements.qualityPreset?.querySelectorAll('.quality-btn');
+        if (!buttons) return;
+        buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.quality === activeQuality);
+        });
+    }
+
+    _setToggle(element, value) {
+        if (element) element.checked = value;
     }
 }

@@ -27,6 +27,7 @@ export class WaveManager {
         // Enemy tracking
         this.enemies = [];
         this.totalKills = 0;
+        this._cachedAliveCount = 0; // Cached to avoid per-frame .filter()
 
         // Reference
         this.player = null;
@@ -101,6 +102,7 @@ export class WaveManager {
         }
 
         this.enemies.push(enemy);
+        this._cachedAliveCount++;
         this.updateShootingTargets();
         return true;
     }
@@ -116,6 +118,7 @@ export class WaveManager {
 
     onEnemyDeath(enemy) {
         this.totalKills++;
+        this._cachedAliveCount = Math.max(0, this._cachedAliveCount - 1);
 
         setTimeout(() => {
             const index = this.enemies.indexOf(enemy);
@@ -132,24 +135,28 @@ export class WaveManager {
 
     update(deltaTime) {
         const currentTime = performance.now();
-        const aliveEnemies = this.enemies.filter(e => !e.isDead);
+        const aliveCount = this._cachedAliveCount;
 
         // Update all enemies
-        this.enemies.forEach(enemy => {
-            enemy.update(deltaTime);
-        });
+        for (let i = 0; i < this.enemies.length; i++) {
+            this.enemies[i].update(deltaTime);
+        }
 
         // Group spread - push enemies apart if too close (prevents clustering)
+        // Only iterate alive enemies using isDead check
         const spreadRadius = 1.5;
         const spreadRadiusSq = spreadRadius * spreadRadius;
         const spreadForce = 2;
+        const enemies = this.enemies;
 
-        for (let i = 0; i < aliveEnemies.length; i++) {
-            const a = aliveEnemies[i];
+        for (let i = 0; i < enemies.length; i++) {
+            const a = enemies[i];
+            if (a.isDead) continue;
             const posA = a.mesh.position;
 
-            for (let j = i + 1; j < aliveEnemies.length; j++) {
-                const b = aliveEnemies[j];
+            for (let j = i + 1; j < enemies.length; j++) {
+                const b = enemies[j];
+                if (b.isDead) continue;
                 const posB = b.mesh.position;
 
                 const dx = posA.x - posB.x;
@@ -187,7 +194,7 @@ export class WaveManager {
                     this.waveEnemyQueue.unshift(type);
                 }
             }
-        } else if (!this.waveCompleted && this.getAliveCount() === 0) {
+        } else if (!this.waveCompleted && aliveCount === 0) {
             // All enemies dead and queue empty - wave complete!
             this.waveCompleted = true;
             this.waveStartTime = currentTime;
@@ -207,7 +214,7 @@ export class WaveManager {
         if (this.waveEnemyQueue.length === 0 && !this.waveCompleted) {
             // Add reinforcements every spawn interval if below target count
             const targetCount = Math.min(this.currentWave + 2, this.maxEnemies);
-            if (this.getAliveCount() < targetCount && currentTime - this.lastSpawnTime >= this.baseSpawnInterval) {
+            if (aliveCount < targetCount && currentTime - this.lastSpawnTime >= this.baseSpawnInterval) {
                 this.spawnRandomEnemy();
                 this.lastSpawnTime = currentTime;
             }
@@ -248,7 +255,7 @@ export class WaveManager {
     }
 
     getAliveCount() {
-        return this.enemies.filter(e => !e.isDead).length;
+        return this._cachedAliveCount;
     }
 
     getWave() {
@@ -272,6 +279,7 @@ export class WaveManager {
         this.totalKills = 0;
         this.lastSpawnTime = 0;
         this.waveCompleted = false;
+        this._cachedAliveCount = 0;
 
         this.updateShootingTargets();
     }

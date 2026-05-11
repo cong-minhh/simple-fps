@@ -677,80 +677,44 @@ export class Shooting {
         // Reset last bullet data for this shot
         this.lastBulletData = { origin: muzzlePos.clone(), target: null };
 
+        // Reusable spread vector (avoid per-shot allocation)
+        const spreadVec = this._spreadVec || (this._spreadVec = new THREE.Vector2());
+
         for (let p = 0; p < pellets; p++) {
             // Apply spread
             const spreadX = (Math.random() - 0.5) * spread;
             const spreadY = (Math.random() - 0.5) * spread;
 
-            this.raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), this.camera);
+            spreadVec.set(spreadX, spreadY);
+            this.raycaster.setFromCamera(spreadVec, this.camera);
 
-            // Raycast against ALL scene objects to detect walls/obstacles
-            // Include both enemy/player meshes and all other scene objects (walls, arena, boxes)
-            const allObjects = [];
-
-            // Add all enemy/player meshes
-            for (const mesh of this.enemyMeshes) {
-                allObjects.push(mesh);
-            }
-
-            // Add all scene children for wall checking (excludes camera which has no geometry)
-            for (const obj of this.scene.children) {
-                // Skip lights, cameras, and objects already in enemyMeshes
-                if (obj.isLight || obj.isCamera || this.enemyMeshes.includes(obj)) continue;
-                allObjects.push(obj);
-            }
-
-            const intersects = this.raycaster.intersectObjects(allObjects, true);
+            // Only raycast against enemy/player meshes (hitscan targets)
+            // Wall hits are cosmetic — use ray direction for tracer endpoint
+            const intersects = this.raycaster.intersectObjects(this.enemyMeshes, true);
 
             if (intersects.length > 0) {
-                // Find relevant hits - ignore floor, ceiling, particles, transparent objects
-                let playerHit = null;
-                let wallHit = null;
+                // Find the first valid enemy/player hit
+                let hitData = null;
 
                 for (const hit of intersects) {
-                    // Skip very close hits (probably camera/local player geometry)
+                    // Skip very close hits (camera/local geometry)
                     if (hit.distance < 0.5) continue;
 
-                    // Check if this is a player/enemy hit
+                    // Walk up to find the root enemy/player object
                     let checkObj = hit.object;
                     while (checkObj.parent && !checkObj.userData.enemy && !checkObj.userData.isPlayer) {
                         checkObj = checkObj.parent;
                     }
 
                     if (checkObj.userData.isPlayer || checkObj.userData.enemy) {
-                        // This is a player/enemy hit
-                        if (!playerHit) playerHit = { hit, rootObj: checkObj };
-                    } else {
-                        // Potential wall/obstacle - check if it's actually a solid blocking object
-                        // Skip if it's a floor (mostly horizontal), transparent, or very small
-                        const obj = hit.object;
-
-                        // Skip particles, sprites, non-mesh objects
-                        if (!obj.isMesh) continue;
-
-                        // Skip floors/ceilings (check normal - floor normals point up/down)
-                        if (hit.face && hit.face.normal) {
-                            const normal = hit.face.normal.clone();
-                            normal.transformDirection(obj.matrixWorld);
-                            // Skip if normal is mostly vertical (floor/ceiling)
-                            if (Math.abs(normal.y) > 0.8) continue;
-                        }
-
-                        // Skip if material is transparent
-                        if (obj.material && obj.material.transparent && obj.material.opacity < 0.5) continue;
-
-                        // This is a valid wall/obstacle
-                        if (!wallHit) wallHit = hit;
+                        hitData = { hit, rootObj: checkObj };
+                        break;
                     }
-
-                    // If we found both, we can stop
-                    if (playerHit && wallHit) break;
                 }
 
-                // Only register hit if player is closer than any wall
-                if (playerHit && (!wallHit || playerHit.hit.distance < wallHit.distance)) {
-                    const hit = playerHit.hit;
-                    const hitObject = playerHit.rootObj;
+                if (hitData) {
+                    const hit = hitData.hit;
+                    const hitObject = hitData.rootObj;
 
                     // Fire visual tracer to hit point
                     if (this.bulletTracerManager) {
@@ -762,7 +726,6 @@ export class Shooting {
                             this.raycaster.ray.direction
                         );
                     }
-                    // Store target for network sync (first pellet only)
                     if (p === 0) {
                         this.lastBulletData.target = hit.point.clone();
                     }
@@ -788,23 +751,8 @@ export class Shooting {
                         this.onHit(hitObject.userData.enemy, damage, hit.point, isHeadshot);
                         this.createHitEffect(hit.point, isHeadshot);
                     }
-                } else if (wallHit) {
-                    // Hit a wall - fire tracer to wall hit point
-                    if (this.bulletTracerManager) {
-                        this.bulletTracerManager.fireFromCamera(
-                            wallHit.point,
-                            this.gunModel,
-                            this.currentWeaponKey,
-                            this.raycaster.far,
-                            this.raycaster.ray.direction
-                        );
-                    }
-                    // Store target for network sync (first pellet only)
-                    if (p === 0) {
-                        this.lastBulletData.target = wallHit.point.clone();
-                    }
                 } else {
-                    // No valid hit found in intersects - fire tracer along ray direction
+                    // Intersects found but no valid enemy/player — fire tracer along ray
                     if (this.bulletTracerManager) {
                         this.bulletTracerManager.fireFromCamera(
                             null,
@@ -814,7 +762,6 @@ export class Shooting {
                             this.raycaster.ray.direction
                         );
                     }
-                    // Store target for network sync (first pellet only) - use max range
                     if (p === 0) {
                         const targetPos = this.lastBulletData.origin.clone().add(
                             this.raycaster.ray.direction.clone().normalize().multiplyScalar(this.raycaster.far)
@@ -823,7 +770,7 @@ export class Shooting {
                     }
                 }
             } else {
-                // No intersects at all - fire tracer along ray direction
+                // No intersects at all — fire tracer along ray direction
                 if (this.bulletTracerManager) {
                     this.bulletTracerManager.fireFromCamera(
                         null,
@@ -833,7 +780,6 @@ export class Shooting {
                         this.raycaster.ray.direction
                     );
                 }
-                // Store target for network sync (first pellet only) - use max range
                 if (p === 0) {
                     const targetPos = this.lastBulletData.origin.clone().add(
                         this.raycaster.ray.direction.clone().normalize().multiplyScalar(this.raycaster.far)

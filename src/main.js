@@ -18,11 +18,8 @@ import { KillStreakManager } from './KillStreakManager.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { DeathCamera } from './DeathCamera.js';
 import { WeaponPickupManager } from './WeaponPickup.js';
-// New systems
+// New systems (SpatialAudio only used for multiplayer)
 import { SpatialAudio } from './SpatialAudio.js';
-import { DeathAnimationManager } from './DeathAnimation.js';
-import { DynamicMapManager } from './DynamicMapElements.js';
-import { SpectatorMode } from './SpectatorMode.js';
 
 // Game states
 const STATES = {
@@ -87,11 +84,8 @@ class Game {
             Logger.debug('Picked up weapon:', weaponType);
         };
 
-        // New enhanced systems
+        // Spatial audio (multiplayer only, lazy-init)
         this.spatialAudio = new SpatialAudio();
-        this.deathAnimations = new DeathAnimationManager(this.scene);
-        this.dynamicMap = new DynamicMapManager(this.scene);
-        this.spectatorMode = new SpectatorMode(this.camera, this.scene);
 
 
         // Connect camera effects to shooting
@@ -119,13 +113,19 @@ class Game {
         // Connect settings change callback
         this.menu.onSettingsChange = (setting, value) => {
             if (setting === 'particles') {
-                this.arena.setParticlesEnabled(value);
-            } else if (setting === 'flickerLights') {
-                this.arena.setFlickerEnabled(value);
+                this.particleSystem.setEnabled(value);
+            } else if (setting === 'shadows') {
+                this.renderer.shadowMap.enabled = value;
+                if (this.mainLight) this.mainLight.castShadow = value;
+            } else if (setting === 'postfx') {
+                this.postProcessing.setEnabled(value);
             } else if (setting === 'hitmarkers') {
                 this.hud.setHitmarkerEnabled(value);
             } else if (setting === 'sensitivity') {
                 this.player.sensitivity = this.sliderToSensitivity(value);
+            } else if (setting === 'resolutionScale') {
+                this.renderer.setPixelRatio(value * window.devicePixelRatio);
+                this.onResize();
             }
         };
 
@@ -190,15 +190,13 @@ class Game {
 
     initLighting() {
         // Ambient light - slightly blue for atmospheric feel
-        const ambient = new THREE.AmbientLight(0x606080, 0.5);
+        const ambient = new THREE.AmbientLight(0x606080, 0.6);
         this.scene.add(ambient);
 
-        // Main directional light with enhanced shadows
+        // Main directional light - single shadow caster
         const directional = new THREE.DirectionalLight(0xffeedd, 0.9);
         directional.position.set(15, 25, 10);
         directional.castShadow = true;
-
-        // Higher quality shadow map
         directional.shadow.mapSize.width = 1024;
         directional.shadow.mapSize.height = 1024;
         directional.shadow.camera.near = 1;
@@ -212,33 +210,9 @@ class Game {
         this.scene.add(directional);
         this.mainLight = directional;
 
-        // Accent lights for atmosphere
-        const redLight = new THREE.PointLight(0xff4444, 0.5, 25);
-        redLight.position.set(-8, 4, -8);
-        redLight.castShadow = true;
-        redLight.shadow.mapSize.width = 256;
-        redLight.shadow.mapSize.height = 256;
-        this.scene.add(redLight);
-
-        const blueLight = new THREE.PointLight(0x4444ff, 0.5, 25);
-        blueLight.position.set(8, 4, 8);
-        blueLight.castShadow = true;
-        blueLight.shadow.mapSize.width = 256;
-        blueLight.shadow.mapSize.height = 256;
-        this.scene.add(blueLight);
-
-        // Fill light from below for dramatic effect
-        const fillLight = new THREE.HemisphereLight(0x444488, 0x222211, 0.3);
+        // Fill light for base visibility
+        const fillLight = new THREE.HemisphereLight(0x444488, 0x222211, 0.4);
         this.scene.add(fillLight);
-
-        // Rim light for player visibility
-        const rimLight = new THREE.SpotLight(0xffffff, 0.3);
-        rimLight.position.set(0, 15, 0);
-        rimLight.angle = Math.PI / 4;
-        rimLight.penumbra = 0.5;
-        rimLight.decay = 2;
-        rimLight.distance = 50;
-        this.scene.add(rimLight);
     }
 
     createDamageFlash() {
@@ -291,9 +265,6 @@ class Game {
                 this.waveManager.onEnemyDeath(enemy);
 
                 // Trigger death animation
-                const enemyPos = enemy.getPosition();
-                const deathDir = enemyPos.clone().sub(this.player.getPosition()).normalize();
-                this.deathAnimations.triggerDeath(enemy.mesh, enemyPos, deathDir, 'enemy');
             } else {
                 this.audio.playHitConfirmation(isHeadshot ? 'headshot' : 'body');
             }
@@ -499,17 +470,11 @@ class Game {
             if (killerData && killerData.position) {
                 this.deathCamera.start(this.player.getPosition(), killerData);
             }
-            // Start spectator mode with remote players
-            const remotePlayers = Array.from(this.multiplayerManager.remotePlayers.values());
-            if (remotePlayers.length > 0) {
-                this.spectatorMode.start(remotePlayers);
-            }
         };
 
         this.multiplayerManager.onRespawnEnd = () => {
             this.hud.hideRespawnOverlay();
             this.deathCamera.stop();
-            this.spectatorMode.stop();
         };
 
         // Player count
@@ -616,16 +581,6 @@ class Game {
         this.weaponPickupManager.clear();
         this.weaponPickupManager.spawnDefaultPickups();
 
-        // Initialize spatial audio
-        this.spatialAudio.init();
-
-        // Create dynamic map elements
-        this.dynamicMap.clear();
-        this.dynamicMap.createDefaults();
-
-        // Clear any death animations
-        this.deathAnimations.clear();
-
         // Ensure HUD is in solo mode
         this.hud.setMultiplayerMode(false);
 
@@ -723,23 +678,28 @@ class Game {
             return;
         }
 
+        const isPlaying = this.state === STATES.PLAYING || this.state === STATES.MULTIPLAYER_PLAYING;
+
         // Update performance monitor
         PerformanceMonitor.update(dt, this.renderer);
 
-        // Update camera effects
-        this.cameraEffects.update(dt);
+        // Only update gameplay systems when actively playing
+        if (isPlaying) {
+            // Update camera effects
+            this.cameraEffects.update(dt);
 
-        // Update post-processing effects
-        this.postProcessing.update(dt);
+            // Update post-processing effects
+            this.postProcessing.update(dt);
 
-        // Update particle system
-        this.particleSystem.update(dt);
+            // Update particle system
+            this.particleSystem.update(dt);
 
-        // Update based on game state
-        if (this.state === STATES.PLAYING) {
-            this.updateSoloGame(dt, time);
-        } else if (this.state === STATES.MULTIPLAYER_PLAYING) {
-            this.updateMultiplayerGame(dt, time);
+            // Update based on game state
+            if (this.state === STATES.PLAYING) {
+                this.updateSoloGame(dt, time);
+            } else {
+                this.updateMultiplayerGame(dt, time);
+            }
         }
 
         // Render with post-processing
@@ -781,12 +741,6 @@ class Game {
                 this.score.updateSurvival(elapsed);
                 this.hud.updateScore(this.score.getScore());
             }
-
-            // Update new systems
-            const playerPos = this.player.getPosition();
-            this.dynamicMap.update(dt, playerPos);
-            this.deathAnimations.update(dt);
-            this.spatialAudio.updateListener(this.camera);
         }
     }
 

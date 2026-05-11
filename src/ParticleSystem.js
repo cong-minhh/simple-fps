@@ -415,6 +415,18 @@ export class ParticleSystem {
             const mesh = this.meshes[type];
             if (!mesh) continue;
 
+            // Quick check: count active particles to skip idle pools
+            let hasActive = false;
+            for (let i = 0; i < pool.length; i++) {
+                if (pool[i].active) { hasActive = true; break; }
+            }
+            if (!hasActive) {
+                // If mesh was previously visible with particles, hide it
+                if (mesh.visible) mesh.visible = false;
+                continue;
+            }
+            if (!mesh.visible) mesh.visible = true;
+
             const positions = mesh.geometry.attributes.position.array;
             const colors = mesh.geometry.attributes.color.array;
             const sizes = mesh.geometry.attributes.size.array;

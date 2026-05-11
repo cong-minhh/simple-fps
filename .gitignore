@@ -17,9 +17,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # build output
 dist/
 
-# dependencies
-node_modules/
-
 # Runtime data
 pids
 *.pid
@@ -100,7 +97,6 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 
 # Gatsby files
 .cache/

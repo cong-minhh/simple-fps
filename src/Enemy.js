@@ -96,8 +96,8 @@ export class Enemy {
     createMesh() {
         const group = new THREE.Group();
 
-        // Body (improved capsule)
-        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.6, 4, 8);
+        // Body (single capsule)
+        const bodyGeometry = new THREE.CapsuleGeometry(0.3, 0.8, 2, 6);
         const bodyMaterial = new THREE.MeshStandardMaterial({
             color: this.bodyColor,
             roughness: 0.4,
@@ -106,40 +106,11 @@ export class Enemy {
             emissiveIntensity: 0.1
         });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 0.8;
+        body.position.y = 0.7;
         body.castShadow = true;
         group.add(body);
 
-        // Shoulders
-        const shoulderGeo = new THREE.SphereGeometry(0.15, 8, 8);
-        const shoulderMat = new THREE.MeshStandardMaterial({ color: this.bodyColor, metalness: 0.5 });
-        [-0.35, 0.35].forEach(x => {
-            const shoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
-            shoulder.position.set(x, 1.1, 0);
-            shoulder.castShadow = true;
-            group.add(shoulder);
-        });
-
-        // Arms
-        const armGeo = new THREE.CapsuleGeometry(0.08, 0.4, 4, 8);
-        const armMat = new THREE.MeshStandardMaterial({ color: this.bodyColor, metalness: 0.3 });
-        [-0.4, 0.4].forEach(x => {
-            const arm = new THREE.Mesh(armGeo, armMat);
-            arm.position.set(x, 0.7, 0);
-            arm.castShadow = true;
-            group.add(arm);
-        });
-
-        // Legs
-        const legGeo = new THREE.CapsuleGeometry(0.1, 0.5, 4, 8);
-        [-0.15, 0.15].forEach(x => {
-            const leg = new THREE.Mesh(legGeo, armMat);
-            leg.position.set(x, 0.25, 0);
-            leg.castShadow = true;
-            group.add(leg);
-        });
-
-        // Head (rounded box style)
+        // Head
         const headGeometry = new THREE.BoxGeometry(0.35, 0.35, 0.35);
         const headMaterial = new THREE.MeshStandardMaterial({
             color: this.headColor,
@@ -152,8 +123,8 @@ export class Enemy {
         head.userData.isHead = true;
         group.add(head);
 
-        // Glowing eyes
-        const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        // Eyes (small spheres, low segment count)
+        const eyeGeometry = new THREE.SphereGeometry(0.05, 4, 4);
         const eyeMaterial = new THREE.MeshBasicMaterial({
             color: this.type === 'BERSERKER' ? 0xff0000 : 0xffff00
         });
@@ -164,30 +135,19 @@ export class Enemy {
             group.add(eye);
         });
 
-        // Type-specific features
+        // Type-specific features (keep for visual identity)
         if (this.type === 'TANK') {
-            // Armor plates
             const armorGeo = new THREE.BoxGeometry(0.5, 0.4, 0.15);
             const armorMat = new THREE.MeshStandardMaterial({ color: 0x3333aa, metalness: 0.8, roughness: 0.2 });
             const chest = new THREE.Mesh(armorGeo, armorMat);
             chest.position.set(0, 0.9, 0.2);
             group.add(chest);
         } else if (this.type === 'RUNNER') {
-            // Sleek visor
             const visorGeo = new THREE.BoxGeometry(0.38, 0.1, 0.1);
             const visorMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
             const visor = new THREE.Mesh(visorGeo, visorMat);
             visor.position.set(0, 1.5, 0.18);
             group.add(visor);
-        } else if (this.type === 'BERSERKER') {
-            // Spiky shoulders
-            const spikeMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.7 });
-            [-0.4, 0.4].forEach(x => {
-                const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 4), spikeMat);
-                spike.position.set(x, 1.3, 0);
-                spike.rotation.z = x > 0 ? -0.5 : 0.5;
-                group.add(spike);
-            });
         }
 
         // Health bar background
@@ -704,18 +664,15 @@ export class Enemy {
 
         this.health -= amount;
 
-        // Damage flash
-        this.mesh.children.forEach(child => {
-            if (child.material && child.material.color) {
-                const originalColor = child.material.color.getHex();
-                child.material.color.setHex(0xffffff);
-                setTimeout(() => {
-                    if (child.material) {
-                        child.material.color.setHex(originalColor);
-                    }
-                }, 50);
-            }
-        });
+        // Quick damage flash via emissive boost (no setTimeout, no per-child iteration)
+        const body = this.mesh.children[0];
+        if (body && body.material && body.material.emissiveIntensity !== undefined) {
+            body.material.emissiveIntensity = 1.0;
+            // Decay will happen naturally in update or just reset after brief delay
+            setTimeout(() => {
+                if (body.material) body.material.emissiveIntensity = 0.1;
+            }, 60);
+        }
 
         if (this.health <= 0) {
             this.die();

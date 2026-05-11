@@ -249,56 +249,8 @@ export class Arena {
     }
 
     addAtmosphere() {
-        // Fog for atmosphere - pushed back for better visibility
+        // Fog for atmosphere and depth cue
         this.scene.fog = new THREE.Fog(0x1a1a2e, 25, 70);
-
-        // Strong ambient light for base visibility
-        const ambientLight = new THREE.AmbientLight(0x6080a0, 1.2);
-        this.scene.add(ambientLight);
-
-        // Main directional light (like a sun/overhead light)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(10, 20, 10);
-        directionalLight.castShadow = true;
-        this.scene.add(directionalLight);
-
-        // Secondary fill light from opposite direction
-        const fillLight = new THREE.DirectionalLight(0x8090ff, 0.4);
-        fillLight.position.set(-10, 15, -10);
-        this.scene.add(fillLight);
-
-        // Colored flickering point lights for industrial atmosphere - increased intensity
-        const lightColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffaa00];
-        const lightPositions = [[-8, 3, -8], [8, 3, -8], [-8, 3, 8], [8, 3, 8]];
-
-        lightPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(lightColors[i], 0.8, 20);
-            light.position.set(...pos);
-            this.scene.add(light);
-
-            // Add to flickering lights for animation
-            this.flickeringLights.push({
-                light: light,
-                baseIntensity: 0.8,
-                flickerSpeed: 3 + i * 0.7, // Deterministic instead of random
-                phase: i * 1.57 // Deterministic phase offset (PI/2 steps)
-            });
-        });
-
-        // Add extra warning lights near hazards - increased intensity
-        const warningPositions = [[-8, 2, 0], [8, 2, 0], [0, 2, -9]];
-        warningPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(0xff0000, 0.8, 10);
-            light.position.set(...pos);
-            this.scene.add(light);
-
-            this.flickeringLights.push({
-                light: light,
-                baseIntensity: 0.8,
-                flickerSpeed: 8 + i * 0.5, // Deterministic
-                phase: i * 2.09 // Deterministic (2PI/3 steps)
-            });
-        });
     }
 
     createFloor() {
@@ -503,15 +455,10 @@ export class Arena {
             pillar.receiveShadow = true;
             this.scene.add(pillar);
 
-            // Glowing top - using shared geometry and material
+            // Emissive glow mesh at top (no light - saves GPU)
             const glow = new THREE.Mesh(this.sharedGeometries.pillarGlow, this.materials.pillarGlow);
             glow.position.set(pos[0], 5.2, pos[2]);
             this.scene.add(glow);
-
-            // Point light at top
-            const light = new THREE.PointLight(0x00ff88, 0.5, 8);
-            light.position.set(pos[0], 5, pos[2]);
-            this.scene.add(light);
 
             this.colliders.push({
                 min: new THREE.Vector3(pos[0] - 0.6, 0, pos[2] - 0.6),
@@ -952,14 +899,8 @@ export class Arena {
             stripe.position.set(pos[0], pos[1] + 0.2, pos[2] + 0.36);
             this.scene.add(stripe);
 
-            // Glow light (low intensity, no shadows)
-            const glow = new THREE.PointLight(0xff4400, 0.3, 4);
-            glow.position.set(pos[0], pos[1] + 0.8, pos[2]);
-            this.scene.add(glow);
-
             this.explosiveBarrels.push({
                 mesh: barrel,
-                light: glow,
                 position: new THREE.Vector3(pos[0], pos[1], pos[2]),
                 health: 30,
                 isExploded: false
@@ -990,32 +931,8 @@ export class Arena {
             mesh.position.set(zone.pos[0], zone.pos[1], zone.pos[2]);
             this.scene.add(mesh);
 
-            // Bubbling particles effect - reduced count for performance
-            const bubbleGeo = new THREE.BufferGeometry();
-            const bubbleCount = 5; // Reduced from 8
-            const positions = new Float32Array(bubbleCount * 3);
-            for (let i = 0; i < bubbleCount; i++) {
-                // Deterministic positions based on index
-                const angle = (i / bubbleCount) * Math.PI * 2;
-                const radius = zone.size[0] * 0.4;
-                positions[i * 3] = zone.pos[0] + Math.cos(angle) * radius;
-                positions[i * 3 + 1] = 0.1 + (i % 3) * 0.15;
-                positions[i * 3 + 2] = zone.pos[2] + Math.sin(angle) * radius * (zone.size[1] / zone.size[0]);
-            }
-            bubbleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-            const bubbleMat = new THREE.PointsMaterial({
-                color: 0x44ff44,
-                size: 0.15,
-                transparent: true,
-                opacity: 0.6
-            });
-            const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
-            this.scene.add(bubbles);
-
             this.hazardZones.push({
                 mesh,
-                bubbles,
                 bounds: {
                     minX: zone.pos[0] - zone.size[0] / 2,
                     maxX: zone.pos[0] + zone.size[0] / 2,
@@ -1029,97 +946,13 @@ export class Arena {
     }
 
     createAtmosphericParticles() {
-        // Reduced particle count for performance (60 instead of 100)
-        const particleCount = 60;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
-        const colors = new Float32Array(particleCount * 3);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Deterministic distribution using golden ratio for better spread
-            const phi = i * 2.39996; // Golden angle
-            const r = Math.sqrt(i / particleCount) * 10;
-
-            positions[i * 3] = Math.cos(phi) * r;
-            positions[i * 3 + 1] = (i / particleCount) * 5;
-            positions[i * 3 + 2] = Math.sin(phi) * r;
-
-            // Deterministic drift velocities
-            velocities[i * 3] = Math.cos(phi * 2) * 0.1;
-            velocities[i * 3 + 1] = ((i % 3) - 1) * 0.05;
-            velocities[i * 3 + 2] = Math.sin(phi * 2) * 0.1;
-
-            // Warm ember colors - deterministic gradient
-            const brightness = 0.5 + (i / particleCount) * 0.5;
-            colors[i * 3] = brightness;
-            colors[i * 3 + 1] = brightness * 0.4;
-            colors[i * 3 + 2] = brightness * 0.1;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.PointsMaterial({
-            size: 0.08,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.7,
-            blending: THREE.AdditiveBlending
-        });
-
-        this.particles = new THREE.Points(geometry, material);
-        this.particles.userData.velocities = velocities;
-        this.scene.add(this.particles);
+        // Disabled for performance — atmospheric particles are invisible during fast gameplay
+        this.particles = null;
     }
 
     // Call this in game loop - highly optimized (no allocations)
     update(deltaTime, playerPos = null) {
         const time = performance.now() * 0.001;
-
-        // Update flickering lights (cheap - just intensity changes)
-        if (this.flickerEnabled) {
-            for (let i = 0; i < this.flickeringLights.length; i++) {
-                const fl = this.flickeringLights[i];
-                // Fast flicker using sin + noise approximation
-                fl.light.intensity = fl.baseIntensity * (0.7 + 0.3 * Math.sin(time * fl.flickerSpeed + fl.phase));
-            }
-        }
-
-        // Update atmospheric particles (single buffer update)
-        if (this.particles && this.particles.visible) {
-            const positions = this.particles.geometry.attributes.position.array;
-            const velocities = this.particles.userData.velocities;
-            const count = positions.length / 3;
-
-            for (let i = 0; i < count; i++) {
-                const i3 = i * 3;
-                positions[i3] += velocities[i3] * deltaTime;
-                positions[i3 + 1] += velocities[i3 + 1] * deltaTime;
-                positions[i3 + 2] += velocities[i3 + 2] * deltaTime;
-
-                // Wrap particles to stay in arena (no conditionals where possible)
-                if (positions[i3] > 10) positions[i3] = -10;
-                if (positions[i3] < -10) positions[i3] = 10;
-                if (positions[i3 + 1] > 5) positions[i3 + 1] = 0;
-                if (positions[i3 + 1] < 0) positions[i3 + 1] = 5;
-                if (positions[i3 + 2] > 10) positions[i3 + 2] = -10;
-                if (positions[i3 + 2] < -10) positions[i3 + 2] = 10;
-            }
-            this.particles.geometry.attributes.position.needsUpdate = true;
-        }
-
-        // Update hazard zone bubbles (simple Y oscillation)
-        for (let i = 0; i < this.hazardZones.length; i++) {
-            const hz = this.hazardZones[i];
-            const positions = hz.bubbles.geometry.attributes.position.array;
-            const count = positions.length / 3;
-            for (let j = 0; j < count; j++) {
-                positions[j * 3 + 1] = 0.1 + Math.abs(Math.sin(time * 2 + j)) * 0.4;
-            }
-            hz.bubbles.geometry.attributes.position.needsUpdate = true;
-        }
 
         // Check player in hazard zones (if playerPos provided)
         let hazardDamage = 0;
@@ -1177,7 +1010,6 @@ export class Arena {
 
         // Remove barrel mesh
         this.scene.remove(barrel.mesh);
-        this.scene.remove(barrel.light);
 
         // Return explosion data for damage calculation
         return {

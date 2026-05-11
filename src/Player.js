@@ -10,6 +10,11 @@ export class Player {
         // Pre-set rotation order ONCE - critical for FPS camera
         this.camera.rotation.order = 'YXZ';
 
+        // Detect Firefox for movementX/Y normalization
+        // Firefox historically used clientX/Y for movementX/Y calculation which is affected
+        // by page zoom and window scaling, unlike Chrome which uses screenX/Y
+        this.isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+
         // Movement settings
         this.walkSpeed = 4;
         this.sprintSpeed = 6;
@@ -91,8 +96,17 @@ export class Player {
     _onMouse(e) {
         if (!this._isLocked || this.isDead) return;
 
-        const dx = e.movementX;
-        const dy = e.movementY;
+        let dx = e.movementX;
+        let dy = e.movementY;
+
+        // Firefox workaround: Firefox's movementX/Y can be affected by window zoom/scale
+        // because it historically calculated these from clientX/Y instead of screenX/Y.
+        // Normalizing by devicePixelRatio helps counteract zoom/scaling effects.
+        if (this.isFirefox) {
+            const dpr = window.devicePixelRatio || 1;
+            dx /= dpr;
+            dy /= dpr;
+        }
 
         // Skip abnormal values (happens on pointer lock)
         if (dx > 200 || dx < -200 || dy > 200 || dy < -200) return;
