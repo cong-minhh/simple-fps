@@ -167,8 +167,7 @@ class Game {
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(1);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.BasicShadowMap;
+        this.renderer.shadowMap.enabled = false;
         this.renderer.setClearColor(0x1a1a2e);
 
         document.getElementById('game-container').appendChild(this.renderer.domElement);
@@ -176,7 +175,7 @@ class Game {
 
     initScene() {
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.Fog(0x1a1a2e, 20, 50);
+        // Fog removed for performance
 
         this.camera = new THREE.PerspectiveCamera(
             90,
@@ -189,56 +188,15 @@ class Game {
     }
 
     initLighting() {
-        // Ambient light - slightly blue for atmospheric feel
-        const ambient = new THREE.AmbientLight(0x606080, 0.5);
+        // Performance: Only 2 lights — ambient + directional (no shadows)
+        const ambient = new THREE.AmbientLight(0x8090a0, 0.8);
         this.scene.add(ambient);
 
-        // Main directional light with enhanced shadows
         const directional = new THREE.DirectionalLight(0xffeedd, 0.9);
         directional.position.set(15, 25, 10);
-        directional.castShadow = true;
-
-        // Higher quality shadow map
-        directional.shadow.mapSize.width = 1024;
-        directional.shadow.mapSize.height = 1024;
-        directional.shadow.camera.near = 1;
-        directional.shadow.camera.far = 60;
-        directional.shadow.camera.left = -20;
-        directional.shadow.camera.right = 20;
-        directional.shadow.camera.top = 20;
-        directional.shadow.camera.bottom = -20;
-        directional.shadow.bias = -0.0005;
-        directional.shadow.normalBias = 0.02;
+        directional.castShadow = false;
         this.scene.add(directional);
         this.mainLight = directional;
-
-        // Accent lights for atmosphere
-        const redLight = new THREE.PointLight(0xff4444, 0.5, 25);
-        redLight.position.set(-8, 4, -8);
-        redLight.castShadow = true;
-        redLight.shadow.mapSize.width = 256;
-        redLight.shadow.mapSize.height = 256;
-        this.scene.add(redLight);
-
-        const blueLight = new THREE.PointLight(0x4444ff, 0.5, 25);
-        blueLight.position.set(8, 4, 8);
-        blueLight.castShadow = true;
-        blueLight.shadow.mapSize.width = 256;
-        blueLight.shadow.mapSize.height = 256;
-        this.scene.add(blueLight);
-
-        // Fill light from below for dramatic effect
-        const fillLight = new THREE.HemisphereLight(0x444488, 0x222211, 0.3);
-        this.scene.add(fillLight);
-
-        // Rim light for player visibility
-        const rimLight = new THREE.SpotLight(0xffffff, 0.3);
-        rimLight.position.set(0, 15, 0);
-        rimLight.angle = Math.PI / 4;
-        rimLight.penumbra = 0.5;
-        rimLight.decay = 2;
-        rimLight.distance = 50;
-        this.scene.add(rimLight);
     }
 
     createDamageFlash() {
@@ -719,7 +677,7 @@ class Game {
         this.lastTime = time;
 
         if (dt <= 0 || dt > 0.2) {
-            this.postProcessing.render();
+            this.renderer.render(this.scene, this.camera);
             return;
         }
 
@@ -729,12 +687,6 @@ class Game {
         // Update camera effects
         this.cameraEffects.update(dt);
 
-        // Update post-processing effects
-        this.postProcessing.update(dt);
-
-        // Update particle system
-        this.particleSystem.update(dt);
-
         // Update based on game state
         if (this.state === STATES.PLAYING) {
             this.updateSoloGame(dt, time);
@@ -742,8 +694,8 @@ class Game {
             this.updateMultiplayerGame(dt, time);
         }
 
-        // Render with post-processing
-        this.postProcessing.render();
+        // Direct render — no post-processing pass
+        this.renderer.render(this.scene, this.camera);
     }
 
     updateSoloGame(dt, time) {
@@ -758,9 +710,6 @@ class Game {
             if (arenaResult.hazardDamage > 0) {
                 this.player.takeDamage(arenaResult.hazardDamage);
             }
-
-            // Update LOD system
-            this.arena.updateLOD(this.camera.position, this.camera);
 
             // Update weapon pickups
             this.weaponPickupManager.update(dt, this.player.getPosition());
@@ -781,12 +730,6 @@ class Game {
                 this.score.updateSurvival(elapsed);
                 this.hud.updateScore(this.score.getScore());
             }
-
-            // Update new systems
-            const playerPos = this.player.getPosition();
-            this.dynamicMap.update(dt, playerPos);
-            this.deathAnimations.update(dt);
-            this.spatialAudio.updateListener(this.camera);
         }
     }
 
@@ -803,9 +746,6 @@ class Game {
 
         // Update arena (no hazard damage in MP to keep it simple)
         this.arena.update(dt, this.player.getPosition());
-
-        // Update LOD system
-        this.arena.updateLOD(this.camera.position, this.camera);
 
         // Update multiplayer manager (remote players, network sync)
         if (this.multiplayerManager) {
@@ -834,8 +774,6 @@ class Game {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        // Update post-processing resolution
-        this.postProcessing.resize(window.innerWidth, window.innerHeight);
     }
 
     // Convert slider value (1-10) to actual mouse sensitivity

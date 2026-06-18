@@ -175,52 +175,16 @@ export class Arena {
     }
 
     _initSharedMaterials() {
-        // Shared materials for performance - created once
+        // Performance: All MeshBasicMaterial — no PBR lighting calculations
         this.materials = {
-            wall: new THREE.MeshStandardMaterial({
-                color: 0x4a4a5a,
-                roughness: 0.6,
-                metalness: 0.3
-            }),
-            barrel: new THREE.MeshStandardMaterial({
-                color: 0x2a4a3a,
-                roughness: 0.6,
-                metalness: 0.4
-            }),
-            barrelRing: new THREE.MeshStandardMaterial({
-                color: 0x666666,
-                metalness: 0.8,
-                roughness: 0.3
-            }),
-            pillar: new THREE.MeshStandardMaterial({
-                color: 0x3a3a4a,
-                roughness: 0.4,
-                metalness: 0.6
-            }),
-            pillarGlow: new THREE.MeshBasicMaterial({ color: 0x00ff88 }),
-            platform: new THREE.MeshStandardMaterial({
-                color: 0x3a5a4a,
-                roughness: 0.5,
-                metalness: 0.4
-            }),
-            platformLeg: new THREE.MeshStandardMaterial({ color: 0x2a3a2a }),
-            ramp: new THREE.MeshStandardMaterial({
-                color: 0x5a4a3a,
-                roughness: 0.7,
-                metalness: 0.2
-            }),
-            boundary: new THREE.MeshStandardMaterial({
-                color: 0x1a1a2e,
-                roughness: 1,
-                metalness: 0
-            }),
-            explosiveBarrel: new THREE.MeshStandardMaterial({
-                color: 0x8b0000,
-                roughness: 0.4,
-                metalness: 0.6,
-                emissive: 0xff2200,
-                emissiveIntensity: 0.15
-            }),
+            wall: new THREE.MeshBasicMaterial({ color: 0x4a4a5a }),
+            barrel: new THREE.MeshBasicMaterial({ color: 0x2a4a3a }),
+            pillar: new THREE.MeshBasicMaterial({ color: 0x3a3a4a }),
+            platform: new THREE.MeshBasicMaterial({ color: 0x3a5a4a }),
+            platformLeg: new THREE.MeshBasicMaterial({ color: 0x2a3a2a }),
+            ramp: new THREE.MeshBasicMaterial({ color: 0x5a4a3a }),
+            boundary: new THREE.MeshBasicMaterial({ color: 0x1a1a2e }),
+            explosiveBarrel: new THREE.MeshBasicMaterial({ color: 0x8b0000 }),
             hazardStripe: new THREE.MeshBasicMaterial({ color: 0xffff00 }),
             hazardZone: new THREE.MeshBasicMaterial({
                 color: 0x00ff00,
@@ -230,127 +194,23 @@ export class Arena {
             })
         };
 
-        // Shared geometries for instanced objects
-        this.sharedGeometries = {
-            barrelRing: new THREE.TorusGeometry(0.42, 0.03, 6, 12), // Reduced segments
-            pillarGlow: new THREE.SphereGeometry(0.2, 6, 6) // Reduced segments
-        };
+        // Shared geometries removed — barrel rings and pillar glows stripped
+        this.sharedGeometries = {};
     }
 
     createSkybox() {
-        // Brighter sky for better visibility
-        const skyGeometry = new THREE.SphereGeometry(100, 16, 12);
-        const skyMaterial = new THREE.MeshBasicMaterial({
-            color: 0x2a3040,
-            side: THREE.BackSide
-        });
-        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-        this.scene.add(sky);
+        // Skybox removed for performance — clear color is sufficient
     }
 
     addAtmosphere() {
-        // Fog for atmosphere - pushed back for better visibility
-        this.scene.fog = new THREE.Fog(0x1a1a2e, 25, 70);
-
-        // Strong ambient light for base visibility
-        const ambientLight = new THREE.AmbientLight(0x6080a0, 1.2);
-        this.scene.add(ambientLight);
-
-        // Main directional light (like a sun/overhead light)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(10, 20, 10);
-        directionalLight.castShadow = true;
-        this.scene.add(directionalLight);
-
-        // Secondary fill light from opposite direction
-        const fillLight = new THREE.DirectionalLight(0x8090ff, 0.4);
-        fillLight.position.set(-10, 15, -10);
-        this.scene.add(fillLight);
-
-        // Colored flickering point lights for industrial atmosphere - increased intensity
-        const lightColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffaa00];
-        const lightPositions = [[-8, 3, -8], [8, 3, -8], [-8, 3, 8], [8, 3, 8]];
-
-        lightPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(lightColors[i], 0.8, 20);
-            light.position.set(...pos);
-            this.scene.add(light);
-
-            // Add to flickering lights for animation
-            this.flickeringLights.push({
-                light: light,
-                baseIntensity: 0.8,
-                flickerSpeed: 3 + i * 0.7, // Deterministic instead of random
-                phase: i * 1.57 // Deterministic phase offset (PI/2 steps)
-            });
-        });
-
-        // Add extra warning lights near hazards - increased intensity
-        const warningPositions = [[-8, 2, 0], [8, 2, 0], [0, 2, -9]];
-        warningPositions.forEach((pos, i) => {
-            const light = new THREE.PointLight(0xff0000, 0.8, 10);
-            light.position.set(...pos);
-            this.scene.add(light);
-
-            this.flickeringLights.push({
-                light: light,
-                baseIntensity: 0.8,
-                flickerSpeed: 8 + i * 0.5, // Deterministic
-                phase: i * 2.09 // Deterministic (2PI/3 steps)
-            });
-        });
+        // Performance: All lights and fog stripped — lighting handled by main.js initLighting()
     }
 
     createFloor() {
-        // Create grid texture procedurally
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        // Dark base
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(0, 0, 512, 512);
-
-        // Grid lines
-        ctx.strokeStyle = '#2a3a4a';
-        ctx.lineWidth = 2;
-        const gridSize = 32;
-        for (let i = 0; i <= 512; i += gridSize) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, 512);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(512, i);
-            ctx.stroke();
-        }
-
-        // Add some detail squares
-        ctx.fillStyle = '#252540';
-        for (let x = 0; x < 512; x += 64) {
-            for (let y = 0; y < 512; y += 64) {
-                if ((x + y) % 128 === 0) {
-                    ctx.fillRect(x + 4, y + 4, 56, 56);
-                }
-            }
-        }
-
-        const floorTexture = new THREE.CanvasTexture(canvas);
-        floorTexture.wrapS = THREE.RepeatWrapping;
-        floorTexture.wrapT = THREE.RepeatWrapping;
-        floorTexture.repeat.set(4, 4);
-
         const floorGeometry = new THREE.PlaneGeometry(40, 40);
-        const floorMaterial = new THREE.MeshStandardMaterial({
-            map: floorTexture,
-            roughness: 0.7,
-            metalness: 0.3
-        });
+        const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
         const floor = new THREE.Mesh(floorGeometry, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
         this.scene.add(floor);
     }
 
@@ -367,8 +227,6 @@ export class Arena {
             const geometry = new THREE.BoxGeometry(...config.size);
             const wall = new THREE.Mesh(geometry, this.materials.wall);
             wall.position.set(...config.pos);
-            wall.castShadow = true;
-            wall.receiveShadow = true;
             this.scene.add(wall);
 
             // Add collider
@@ -388,25 +246,7 @@ export class Arena {
     }
 
     createCrates() {
-        // Wooden crate texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#5a4030';
-        ctx.fillRect(0, 0, 128, 128);
-        ctx.strokeStyle = '#3a2818';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(4, 4, 120, 120);
-        ctx.strokeRect(32, 32, 64, 64);
-
-        const crateTexture = new THREE.CanvasTexture(canvas);
-        const crateMaterial = new THREE.MeshStandardMaterial({
-            map: crateTexture,
-            roughness: 0.9,
-            metalness: 0.1
-        });
+        const crateMaterial = new THREE.MeshBasicMaterial({ color: 0x5a4030 });
 
         // === STRATEGIC CRATE PLACEMENT (No randomness) ===
         // Small crates (0.8): Quick cover, scattered
@@ -445,8 +285,6 @@ export class Arena {
             const crate = new THREE.Mesh(geometry, crateMaterial);
             crate.position.set(config.pos[0], config.pos[1] * config.size, config.pos[2]);
             crate.rotation.y = config.rotation;
-            crate.castShadow = true;
-            crate.receiveShadow = true;
             this.scene.add(crate);
 
             // Add collider
@@ -469,16 +307,9 @@ export class Arena {
         barrelPositions.forEach(pos => {
             const barrel = new THREE.Mesh(barrelGeometry, this.materials.barrel);
             barrel.position.set(...pos);
-            barrel.castShadow = true;
             this.scene.add(barrel);
 
-            // Metal rings - using shared geometry and material
-            [-0.4, 0, 0.4].forEach(y => {
-                const ring = new THREE.Mesh(this.sharedGeometries.barrelRing, this.materials.barrelRing);
-                ring.rotation.x = Math.PI / 2;
-                ring.position.set(pos[0], pos[1] + y, pos[2]);
-                this.scene.add(ring);
-            });
+            // Barrel rings removed for performance
 
             this.colliders.push({
                 min: new THREE.Vector3(pos[0] - 0.4, 0, pos[2] - 0.4),
@@ -499,19 +330,9 @@ export class Arena {
         pillarPositions.forEach(pos => {
             const pillar = new THREE.Mesh(pillarGeometry, this.materials.pillar);
             pillar.position.set(...pos);
-            pillar.castShadow = true;
-            pillar.receiveShadow = true;
             this.scene.add(pillar);
 
-            // Glowing top - using shared geometry and material
-            const glow = new THREE.Mesh(this.sharedGeometries.pillarGlow, this.materials.pillarGlow);
-            glow.position.set(pos[0], 5.2, pos[2]);
-            this.scene.add(glow);
-
-            // Point light at top
-            const light = new THREE.PointLight(0x00ff88, 0.5, 8);
-            light.position.set(pos[0], 5, pos[2]);
-            this.scene.add(light);
+            // Glow spheres and point lights removed for performance
 
             this.colliders.push({
                 min: new THREE.Vector3(pos[0] - 0.6, 0, pos[2] - 0.6),
@@ -532,8 +353,6 @@ export class Arena {
             const geometry = new THREE.BoxGeometry(...config.size);
             const platform = new THREE.Mesh(geometry, this.materials.platform);
             platform.position.set(...config.pos);
-            platform.castShadow = true;
-            platform.receiveShadow = true;
             this.scene.add(platform);
 
             // Platform legs
@@ -547,7 +366,6 @@ export class Arena {
             legPositions.forEach(pos => {
                 const leg = new THREE.Mesh(legGeometry, this.materials.platformLeg);
                 leg.position.set(...pos);
-                leg.castShadow = true;
                 this.scene.add(leg);
             });
 
@@ -574,8 +392,6 @@ export class Arena {
         const ramp = new THREE.Mesh(rampGeometry, this.materials.ramp);
         ramp.position.set(0, 0.5, -7);
         ramp.rotation.x = Math.PI / 8;
-        ramp.castShadow = true;
-        ramp.receiveShadow = true;
         this.scene.add(ramp);
     }
 
@@ -942,7 +758,6 @@ export class Arena {
         positions.forEach(pos => {
             const barrel = new THREE.Mesh(barrelGeo, this.materials.explosiveBarrel.clone());
             barrel.position.set(pos[0], pos[1], pos[2]);
-            barrel.castShadow = true;
             barrel.userData.isExplosive = true;
             barrel.userData.health = 30;
             this.scene.add(barrel);
@@ -952,14 +767,11 @@ export class Arena {
             stripe.position.set(pos[0], pos[1] + 0.2, pos[2] + 0.36);
             this.scene.add(stripe);
 
-            // Glow light (low intensity, no shadows)
-            const glow = new THREE.PointLight(0xff4400, 0.3, 4);
-            glow.position.set(pos[0], pos[1] + 0.8, pos[2]);
-            this.scene.add(glow);
+            // Glow light removed for performance
 
             this.explosiveBarrels.push({
                 mesh: barrel,
-                light: glow,
+                light: null,
                 position: new THREE.Vector3(pos[0], pos[1], pos[2]),
                 health: 30,
                 isExploded: false
@@ -1029,49 +841,8 @@ export class Arena {
     }
 
     createAtmosphericParticles() {
-        // Reduced particle count for performance (60 instead of 100)
-        const particleCount = 60;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
-        const colors = new Float32Array(particleCount * 3);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Deterministic distribution using golden ratio for better spread
-            const phi = i * 2.39996; // Golden angle
-            const r = Math.sqrt(i / particleCount) * 10;
-
-            positions[i * 3] = Math.cos(phi) * r;
-            positions[i * 3 + 1] = (i / particleCount) * 5;
-            positions[i * 3 + 2] = Math.sin(phi) * r;
-
-            // Deterministic drift velocities
-            velocities[i * 3] = Math.cos(phi * 2) * 0.1;
-            velocities[i * 3 + 1] = ((i % 3) - 1) * 0.05;
-            velocities[i * 3 + 2] = Math.sin(phi * 2) * 0.1;
-
-            // Warm ember colors - deterministic gradient
-            const brightness = 0.5 + (i / particleCount) * 0.5;
-            colors[i * 3] = brightness;
-            colors[i * 3 + 1] = brightness * 0.4;
-            colors[i * 3 + 2] = brightness * 0.1;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.PointsMaterial({
-            size: 0.08,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.7,
-            blending: THREE.AdditiveBlending
-        });
-
-        this.particles = new THREE.Points(geometry, material);
-        this.particles.userData.velocities = velocities;
-        this.scene.add(this.particles);
+        // Atmospheric particles removed for performance
+        this.particles = null;
     }
 
     // Call this in game loop - highly optimized (no allocations)
@@ -1177,7 +948,7 @@ export class Arena {
 
         // Remove barrel mesh
         this.scene.remove(barrel.mesh);
-        this.scene.remove(barrel.light);
+        if (barrel.light) this.scene.remove(barrel.light);
 
         // Return explosion data for damage calculation
         return {

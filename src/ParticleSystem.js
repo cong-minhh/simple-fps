@@ -70,7 +70,7 @@ class Particle {
 export class ParticleSystem {
     constructor(scene) {
         this.scene = scene;
-        this.enabled = true;
+        this.enabled = false; // Performance: disabled by default
         this.qualityMultiplier = 1.0;
 
         // Particle pools per type
@@ -81,8 +81,7 @@ export class ParticleSystem {
         this._tempVec = new THREE.Vector3();
         this._tempColor = new THREE.Color();
 
-        // Initialize pools
-        this._initPools();
+        // Skip pool initialization when disabled
     }
 
     /**

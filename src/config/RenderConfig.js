@@ -15,7 +15,7 @@ export const RENDERER = {
  * Shadow map settings
  */
 export const SHADOWS = {
-    ENABLED: true,
+    ENABLED: false,
     TYPE: 'BasicShadowMap',   // Use THREE.BasicShadowMap
     MAP_SIZE: 512,
     CAMERA_NEAR: 1,
@@ -65,9 +65,9 @@ export const LIGHTING = {
  * Object pool sizes for performance
  */
 export const POOL_SIZES = {
-    BULLET_TRACERS: 100,
+    BULLET_TRACERS: 20,
     ENEMY_PROJECTILES: 50,
-    HIT_PARTICLES: 20,
+    HIT_PARTICLES: 0,
     INDICATORS: 15
 };
 

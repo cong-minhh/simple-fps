@@ -280,29 +280,7 @@ export class DynamicMapManager {
      * Create default dynamic elements for arena
      */
     createDefaults() {
-        // Moving platform in center
-        this.addPlatform({
-            start: new THREE.Vector3(0, 1, -5),
-            end: new THREE.Vector3(0, 4, -5),
-            width: 3,
-            depth: 3,
-            speed: 1.5
-        });
-
-        // Horizontal platform
-        this.addPlatform({
-            start: new THREE.Vector3(-8, 2, 0),
-            end: new THREE.Vector3(8, 2, 0),
-            width: 2,
-            depth: 2,
-            speed: 3
-        });
-
-        // Auto door
-        this.addDoor({
-            position: new THREE.Vector3(0, 1.5, 8),
-            triggerDistance: 4
-        });
+        // Performance: dynamic map elements disabled
     }
 
     /**

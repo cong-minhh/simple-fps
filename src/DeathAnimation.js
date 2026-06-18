@@ -145,29 +145,8 @@ export class DeathAnimationManager {
      * @param {string} type - 'enemy' or 'player'
      */
     triggerDeath(entity, position, deathDirection, type = 'enemy') {
-        // Clone the entity mesh for the ragdoll
-        const corpse = this._createCorpse(entity, type);
-        if (!corpse) return null;
-
-        corpse.position.copy(position);
-        this.scene.add(corpse);
-
-        const deathInstance = new DeathInstance(
-            corpse,
-            position,
-            deathDirection || new THREE.Vector3(0, 0, 0),
-            type
-        );
-
-        this.activeDeaths.push(deathInstance);
-
-        // Limit active corpses
-        while (this.activeDeaths.length > this.maxCorpses) {
-            const oldest = this.activeDeaths.shift();
-            this._removeCorpse(oldest);
-        }
-
-        return deathInstance;
+        // Performance: death animations disabled
+        return null;
     }
 
     /**

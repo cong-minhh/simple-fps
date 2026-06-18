@@ -96,111 +96,38 @@ export class Enemy {
     createMesh() {
         const group = new THREE.Group();
 
-        // Body (improved capsule)
-        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.6, 4, 8);
-        const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: this.bodyColor,
-            roughness: 0.4,
-            metalness: 0.4,
-            emissive: this.bodyColor,
-            emissiveIntensity: 0.1
-        });
+        // Body — low-poly, flat-shaded
+        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.6, 2, 4);
+        const bodyMaterial = new THREE.MeshBasicMaterial({ color: this.bodyColor });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.position.y = 0.8;
-        body.castShadow = true;
         group.add(body);
 
-        // Shoulders
-        const shoulderGeo = new THREE.SphereGeometry(0.15, 8, 8);
-        const shoulderMat = new THREE.MeshStandardMaterial({ color: this.bodyColor, metalness: 0.5 });
-        [-0.35, 0.35].forEach(x => {
-            const shoulder = new THREE.Mesh(shoulderGeo, shoulderMat);
-            shoulder.position.set(x, 1.1, 0);
-            shoulder.castShadow = true;
-            group.add(shoulder);
-        });
-
         // Arms
-        const armGeo = new THREE.CapsuleGeometry(0.08, 0.4, 4, 8);
-        const armMat = new THREE.MeshStandardMaterial({ color: this.bodyColor, metalness: 0.3 });
+        const armGeo = new THREE.CapsuleGeometry(0.08, 0.4, 2, 4);
         [-0.4, 0.4].forEach(x => {
-            const arm = new THREE.Mesh(armGeo, armMat);
+            const arm = new THREE.Mesh(armGeo, bodyMaterial);
             arm.position.set(x, 0.7, 0);
-            arm.castShadow = true;
             group.add(arm);
         });
 
         // Legs
-        const legGeo = new THREE.CapsuleGeometry(0.1, 0.5, 4, 8);
+        const legGeo = new THREE.CapsuleGeometry(0.1, 0.5, 2, 4);
         [-0.15, 0.15].forEach(x => {
-            const leg = new THREE.Mesh(legGeo, armMat);
+            const leg = new THREE.Mesh(legGeo, bodyMaterial);
             leg.position.set(x, 0.25, 0);
-            leg.castShadow = true;
             group.add(leg);
         });
 
-        // Head (rounded box style)
+        // Head (keep for headshot detection)
         const headGeometry = new THREE.BoxGeometry(0.35, 0.35, 0.35);
-        const headMaterial = new THREE.MeshStandardMaterial({
-            color: this.headColor,
-            roughness: 0.3,
-            metalness: 0.3
-        });
+        const headMaterial = new THREE.MeshBasicMaterial({ color: this.headColor });
         const head = new THREE.Mesh(headGeometry, headMaterial);
         head.position.y = 1.45;
-        head.castShadow = true;
         head.userData.isHead = true;
         group.add(head);
 
-        // Glowing eyes
-        const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-        const eyeMaterial = new THREE.MeshBasicMaterial({
-            color: this.type === 'BERSERKER' ? 0xff0000 : 0xffff00
-        });
-
-        [-0.08, 0.08].forEach(x => {
-            const eye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-            eye.position.set(x, 1.48, 0.18);
-            group.add(eye);
-        });
-
-        // Type-specific features
-        if (this.type === 'TANK') {
-            // Armor plates
-            const armorGeo = new THREE.BoxGeometry(0.5, 0.4, 0.15);
-            const armorMat = new THREE.MeshStandardMaterial({ color: 0x3333aa, metalness: 0.8, roughness: 0.2 });
-            const chest = new THREE.Mesh(armorGeo, armorMat);
-            chest.position.set(0, 0.9, 0.2);
-            group.add(chest);
-        } else if (this.type === 'RUNNER') {
-            // Sleek visor
-            const visorGeo = new THREE.BoxGeometry(0.38, 0.1, 0.1);
-            const visorMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            const visor = new THREE.Mesh(visorGeo, visorMat);
-            visor.position.set(0, 1.5, 0.18);
-            group.add(visor);
-        } else if (this.type === 'BERSERKER') {
-            // Spiky shoulders
-            const spikeMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.7 });
-            [-0.4, 0.4].forEach(x => {
-                const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 4), spikeMat);
-                spike.position.set(x, 1.3, 0);
-                spike.rotation.z = x > 0 ? -0.5 : 0.5;
-                group.add(spike);
-            });
-        }
-
-        // Health bar background
-        const healthBgGeometry = new THREE.PlaneGeometry(0.6, 0.08);
-        const healthBgMaterial = new THREE.MeshBasicMaterial({
-            color: 0x333333,
-            side: THREE.DoubleSide
-        });
-        const healthBg = new THREE.Mesh(healthBgGeometry, healthBgMaterial);
-        healthBg.position.y = 1.85;
-        group.add(healthBg);
-
-        // Health bar fill
+        // Health bar fill only (background removed)
         const healthBarGeometry = new THREE.PlaneGeometry(0.58, 0.06);
         const healthBarMaterial = new THREE.MeshBasicMaterial({
             color: 0x00ff00,
